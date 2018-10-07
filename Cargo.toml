@@ -19,3 +19,6 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
+
+[package.metadata.cargo-xbuild]
+memcpy = true

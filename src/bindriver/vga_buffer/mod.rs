@@ -79,25 +79,6 @@ lazy_static! {
   });
 }
 
-
-macro_rules! vga_print {
-    ($($arg:tt)*) => ($crate::bindriver::vga_buffer::print(format_args!($($arg)*)));
-}
-
-macro_rules! vga_println {
-    () => (print!("\n"));
-    ($fmt:expr) => (vga_print!(concat!($fmt, "\n")));
-    ($fmt:expr, $($arg:tt)*) => (vga_print!(concat!($fmt, "\n"), $($arg)*));
-}
-
-macro_rules! vga_print_green {
-    ($($arg:tt)*) => ($crate::bindriver::vga_buffer::print_green(format_args!($($arg)*)));
-}
-
-macro_rules! vga_print_red {
-    ($($arg:tt)*) => ($crate::bindriver::vga_buffer::print_red(format_args!($($arg)*)));
-}
-
 pub fn print(args: fmt::Arguments) {
   use core::fmt::Write;
   WRITER.lock().write_fmt(args).unwrap();
