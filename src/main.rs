@@ -5,6 +5,7 @@
 #![feature(alloc_error_handler)]
 #![feature(allocator_api)]
 #![feature(min_const_fn)]
+#![feature(lang_items)]
 #![feature(const_raw_ptr_to_usize_cast)]
 #![no_std]
 #![no_main]
@@ -16,6 +17,9 @@ extern crate volatile;
 extern crate spin;
 extern crate uart_16550;
 extern crate x86_64;
+extern crate slabmalloc;
+#[macro_use]
+extern crate static_assertions;
 #[macro_use]
 extern crate alloc;
 #[macro_use]
@@ -24,16 +28,19 @@ mod version;
 mod vmem;
 
 
-
+const BOOT_MEMORY_PAGES: usize = 256;
+use slabmalloc::SafeZoneAllocator;
+use spin::Mutex;
+use vmem::PageManager;
+use x86_64::PhysAddr;
+static PAGER: Mutex<PageManager> = Mutex::new(PageManager {
+  boot_pages: [[0 as u8; 4096]; BOOT_MEMORY_PAGES],
+  boot_used: [false; BOOT_MEMORY_PAGES],
+  use_boot_memory: true,
+  pages: None,
+});
 #[global_allocator]
-static mut ALLOCATOR: vmem::malloc::Allocator = vmem::malloc::Allocator{
-  boot_memory: spin::Mutex::new(vmem::bmfa::BitmapFrameAllocator{
-    mem: [0; vmem::bmfa::BootMemorySize],
-    allocbitmap: [0; 4096],
-  }),
-  slab_memory: None,
-  disable_boot_memory: false,
-};
+static MEM_PROVIDER: SafeZoneAllocator = SafeZoneAllocator::new(&PAGER);
 
 #[no_mangle]
 pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> ! {
@@ -52,7 +59,7 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
   debug!("P4PTA: {:#016x}\n", boot_info.p4_table_addr);
   {
     debug!("Initializing VMEM Slab Allocator...");
-    unsafe { ALLOCATOR.init_slab_memory(); }
+    unsafe { PAGER.lock().init_page_store(); }
     debug!("Slab allocator initialized, adding memory");
     let mmap = &boot_info.memory_map;
     let mut usable_memory = 0;
@@ -66,17 +73,15 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
       use bootloader::bootinfo::MemoryRegionType;
       match entry.region_type {
         MemoryRegionType::Usable => { 
-          debug!("Adding MMAPE {:#04x} to usable memory...", x);
-          usable_memory += range.end_addr() - range.start_addr();
+          let size = range.end_addr() - range.start_addr();
+          debug!("Adding MMAPE {:#04x} to usable memory... {} KiBytes, {} Pages", x, size / 1024, size / 4096);
+          usable_memory += size;
           unsafe { 
-            let res = ALLOCATOR.push_slab(
-            range.start_addr() as usize, 
-            (range.end_addr() - range.start_addr()) as usize
+            PAGER.lock().add_memory(
+              PhysAddr::new(range.start_addr()),
+              (size / 4096) as usize
             );
-            match res {
-              Ok(size) => { debug!("Added {:08} KiB to memory", size / 1024); }
-              Err(msg) => { panic!("Error during Slabbing: {}", msg); }
-            }
+            PAGER.lock().use_boot_memory = false;
           };
         },
         _ => {}
@@ -84,18 +89,13 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
     }
     debug!("Total usable memory: {:16} KiB, {:8} MiB", usable_memory / 1024, 
       usable_memory / 1024 / 1024);
-    debug!("Disabling Boot Memory...");
-    unsafe { ALLOCATOR.disable_boot_memory(); }
-    if let Ok(free_memory) = unsafe { ALLOCATOR.free_memory() } {
-      debug!("Available memory: {} Bytes, {} KiB, {} MiB, {} Pages", 
-        free_memory,
-        free_memory / 1024,
-        free_memory / 1024 / 1024,
-        free_memory / 4096
-      );
-    } else {
-      panic!("could not account free memory after slab init");
-    }
+    let free_memory = PAGER.lock().free_memory();
+    debug!("Available memory: {} Bytes, {} KiB, {} MiB, {} Pages", 
+      free_memory,
+      free_memory / 1024,
+      free_memory / 1024 / 1024,
+      free_memory / 4096
+    );
     //panic!("EOT");
     debug!("Testing VMEM...");
     let val = alloc::boxed::Box::new(5);

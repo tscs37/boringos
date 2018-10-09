@@ -1,4 +1,4 @@
-.PHONY: all clean kernel
+.PHONY: all clean kernel release
 
 TARGET = x86_64-boringos
 CRATE = boringos
@@ -7,11 +7,14 @@ QEMU_PLATFORM = system-x86_64
 
 all: kernel bootimage qemu
 
+release: qemu_release
+
 clean:
 	rm -r target/
 
 bootimage: kernel
 	bootimage build --target $(TARGET).json
+
 kernel: 
 	cargo xbuild --target $(TARGET).json
 
