@@ -78,7 +78,7 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
           usable_memory += size;
           unsafe { 
             PAGER.lock().add_memory(
-              PhysAddr::new(range.start_addr()),
+              ::vmem::pagelist::PhysAddr::new_unchecked(range.start_addr()),
               (size / 4096) as usize
             );
             PAGER.lock().use_boot_memory = false;

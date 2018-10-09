@@ -1,13 +1,36 @@
 
 
-const PagesPerBlock: usize = 512;
+const PagesPerBlock: usize = 449; // Readjust this when struct layout changes
 use vmem::PageSize;
 use ::core::ptr::NonNull;
 
 // we ignore address 0
 pub struct PhysAddr(NonNull<u8>);
 
+impl ::core::fmt::Display for PhysAddr {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    let string = format!("{:#018x}", self.as_u64());
+    f.pad_integral(true, "", &string)
+  }
+}
+
+impl ::core::fmt::Debug for PhysAddr {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    let string = format!("{:#018x}", self.as_u64());
+    f.pad_integral(true, "", &string)
+  }
+}
+
 impl PhysAddr {
+  pub fn new(p: u64) -> Option<PhysAddr> {
+    match NonNull::new(p as *mut u8) {
+      Some(nn) => Some(PhysAddr(nn)),
+      None => None
+    }
+  }
+  pub unsafe fn new_unchecked(p: u64) -> PhysAddr {
+    PhysAddr(NonNull::new_unchecked(p as *mut u8))
+  }
   pub fn as_u64(&self) -> u64 {
     self.as_mut8() as u64
   }
@@ -176,24 +199,33 @@ impl PageListLink {
   pub fn release(&mut self, p: PhysAddr) {
     //TODO: zero page content
     //TODO: mark page unused
+    panic!("TODO")
   }
-  pub fn append_range(&mut self) {
+  pub fn append_range(&mut self, base: PhysAddr, page_count: usize) {
     //TODO: zero memory range
     //TODO: append range to list
+    panic!("TODO")
   }
-  //
+  pub fn insert_addr(&mut self, addr: PhysAddr) {
+    panic!("TODO")
+  }
   fn convert_range(&mut self, needed: usize) {
     //TODO: scan for unused list entry slots
     //      then fill from range
     //      if <needed> pages were not filled up
     //      create new, empty range and repeat
+    panic!("TODO")
+  }
+  pub fn free_pages(&self) -> usize {
+    //TODO: count number of unused pages
+    panic!("TODO")
   }
 }
 
 impl PageList {
-  pub fn new(p: PhysAddr) -> *mut PageList {
+  pub fn new(p: PhysAddr) -> NonNull<PageList> {
     zero_page(p);
-    p.as_u64() as *mut PageList
+    NonNull::new_unchecked(p.as_u64() as *mut PageList)
   }
   pub fn has_free(&self) -> bool {
     for x in 0..PagesPerBlock {
@@ -203,7 +235,7 @@ impl PageList {
     }
     return false;
   }
-  pub fn release(&mut self, p: PhysAddr) {
+  /*pub fn release(&mut self, p: PhysAddr) {
     if !(p.as_u64() < self.lowest.as_u64() || p.as_u64() > self.highest.as_u64()) {
       for x in 0..PagesPerBlock {
         match self.pages[x] {
@@ -225,10 +257,7 @@ impl PageList {
       PageListLink::PageRangeEntry(pr) => panic!("not implemented"),
       PageListLink::None => panic!("could not release address"),
     }
-  }
-  pub fn append_range(&mut self, base: PhysAddr, size: usize) {
-    panic!("TODO")
-  }
+  }*/
   // convert_range will create a PageList and a PageRange out of a given PageListLink, which must
   // be a PageRangeEntry. The PageRange will have at most "PagesPerBlock" in pages consumed and
   // the adjusted values will be returned.

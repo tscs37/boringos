@@ -1,11 +1,12 @@
 pub mod pagelist;
 
 use ::slabmalloc::ObjectPage;
-use ::core::ptr::NonNull;
+use ::vmem::pagelist::PageListLink;
 
 pub const PageSize: usize = 4096;
 
-use x86_64::PhysAddr;
+//use x86_64::PhysAddr;
+use ::vmem::pagelist::PhysAddr;
 
 #[repr(C)]
 #[repr(align(4096))]
@@ -22,17 +23,17 @@ impl<'a> PageManager {
   pub unsafe fn init_page_store(&mut self) {
     debug!("Initializing Page Store...");
     match self.pages {
-      Some(ref pages) => panic!("attempted to double init page store"),
-      None => {
+      PageListLink::None => {
         // We need to allocate here so we need to force open the lock for a moment
         unsafe { ::PAGER.force_unlock(); }
         match self.get_boot_page() {
           Some(page) => {
-            self.pages = Some(NonNull::new_unchecked(pagelist::PageList::new(page)));
+            self.pages = PageListLink::PageListEntry(pagelist::PageList::new(page));
           }
           None => panic!("could not get page for first pagelist"),
         }
       }
+      _ => panic!("attempted to double init page store"),
     }
     debug!("Done, returning with new page store");
   }
@@ -41,7 +42,7 @@ impl<'a> PageManager {
       if !self.boot_used[x] {
         debug!("Allocating BootPage {}", x);
         self.boot_used[x] = true;
-        return Some(PhysAddr::new((&mut self.boot_pages[x][0] as *mut u8) as u64));
+        return PhysAddr::new((&mut self.boot_pages[x][0] as *mut u8) as u64);
       }
     }
     None
@@ -54,29 +55,29 @@ impl<'a> PageManager {
   }
 
   fn get_boot_base(&self) -> PhysAddr {
-    PhysAddr::new((self.boot_pages[0][0] as *mut u8) as u64)
+    PhysAddr::new((self.boot_pages[0][0] as *mut u8) as u64).expect("must have boot base")
   }
   fn get_boot_top(&self) -> PhysAddr {
-    PhysAddr::new((self.boot_pages[self.boot_pages.len() - 1][0] as *mut u8) as u64)
+    PhysAddr::new((self.boot_pages[self.boot_pages.len() - 1][0] as *mut u8) as u64).expect("must have boot top")
   }
 
   pub unsafe fn add_memory(&self, start: PhysAddr, num_pages: usize) {
     debug!("enter: add_memory");
+    //TODO: use self.pages.insert/append
     match self.pages {
-      Some(pages) => {
-        pages.as_ptr().append_range(start, num_pages);
+      PageListLink::PageListEntry(_) => {
+        self.pages.append_range(start, num_pages);
       }
-      None => { panic!("attempted to add memory but couldn't get pages")}
+      _ => { panic!("attempted to add memory but couldn't get pages")}
     }
     debug!("leave: add_memory");
   }
   pub fn free_memory(&self) -> usize {
     match self.pages {
-      None => { panic!("attempted to count free memory but couldn't get pages")}
-      Some(ref pages) => {
-        let mbh = unsafe { &*(pages.clone().get()) };
-        return mbh.len() * 4096;
+      PageListLink::PageListEntry(_) => {
+        return self.pages.free_pages() * 4096;
       }
+      _ => { panic!("attempted to count free memory but couldn't get pages")}
     }
   }
   fn from_objpage(page: &mut ObjectPage<'a>) -> *mut u8 {
@@ -92,12 +93,13 @@ impl<'a> ::slabmalloc::PageProvider<'a> for PageManager {
     debug!("Allocating Page...");
     if self.use_boot_memory || true {
       if let Some(page) = self.get_boot_page() {
-        debug!("Got a page from boot: {:#016x}", page);
+        debug!("Got a page from boot: {}", page);
         return Some(PageManager::to_objpage(page.as_u64() as *mut u8));
       }
       debug!("Boot Memory exhausted, using real memory...");
     }
     None
+    //TODO: use self.pages.grab_free()
     /*match self.pages {
       Some(ref pages) => {
         let mut pgs = unsafe { &mut *(pages.clone()).get() };
@@ -124,14 +126,14 @@ impl<'a> ::slabmalloc::PageProvider<'a> for PageManager {
     let addr = PageManager::from_objpage(page);
     if (addr as u64) < self.get_boot_top().as_u64() {
       if addr as u64 > self.get_boot_base().as_u64() {
-        self.free_boot_page(PhysAddr::new(addr as u64));
+        self.free_boot_page(PhysAddr::new_unchecked(addr as u64));
       }
     }
     match self.pages {
-      Some(ref pages) => {
-        unsafe { (*pages.clone().get()).push(PhysAddr::new(addr as u64)) }; 
+      PageListLink::PageListEntry(_) => {
+        self.pages.release(PhysAddr::new_unchecked(addr as u64));
       }
-      None => { panic!("tried to dealloc non-boot page without page struct")}
+      _ => { panic!("tried to dealloc non-boot page without page struct") }
     }
   }
 }
