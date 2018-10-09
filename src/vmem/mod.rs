@@ -3,14 +3,14 @@ pub mod pagelist;
 use ::slabmalloc::ObjectPage;
 use ::vmem::pagelist::PageListLink;
 
-pub const PageSize: usize = 4096;
+pub const PAGE_SIZE: usize = 4096;
 
 use ::vmem::pagelist::PhysAddr;
 
 #[repr(C)]
 #[repr(align(4096))]
 pub struct PageManager {
-  pub boot_pages: [[u8; PageSize]; ::BOOT_MEMORY_PAGES],
+  pub boot_pages: [[u8; PAGE_SIZE]; ::BOOT_MEMORY_PAGES],
   pub boot_used: [bool; ::BOOT_MEMORY_PAGES],
   pub use_boot_memory: bool,
   // list of 4k pages
@@ -46,7 +46,7 @@ impl<'a> PageManager {
   }
   fn free_boot_page(&mut self, pa: PhysAddr) {
     let base = self.get_boot_base();
-    let pos = (pa.as_u64() - base.as_u64()) / PageSize as u64;
+    let pos = (pa.as_u64() - base.as_u64()) / PAGE_SIZE as u64;
     debug!("Freeing BootPage {}", pos);
     self.boot_used[pos as usize] = false;
   }
@@ -102,8 +102,8 @@ impl<'a> ::slabmalloc::PageProvider<'a> for PageManager {
     debug!("Releasing Page {:?}", page);
     {
       debug!("Clearing page data...");
-      let page_raw = (page as *mut _) as *mut [u8; PageSize];
-      for x in 0..PageSize-1 {
+      let page_raw = (page as *mut _) as *mut [u8; PAGE_SIZE];
+      for x in 0..PAGE_SIZE-1 {
         unsafe { (*page_raw)[x] = 0x00; }
       }
     }

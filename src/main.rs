@@ -1,5 +1,4 @@
 
-#![feature(panic_handler)]
 #![feature(abi_x86_interrupt)]
 #![feature(alloc)]
 #![feature(alloc_error_handler)]
@@ -20,7 +19,6 @@ extern crate x86_64;
 extern crate slabmalloc;
 #[macro_use]
 extern crate static_assertions;
-#[macro_use]
 extern crate alloc;
 #[macro_use]
 mod bindriver;
@@ -32,7 +30,6 @@ const BOOT_MEMORY_PAGES: usize = 256;
 use slabmalloc::SafeZoneAllocator;
 use spin::Mutex;
 use vmem::PageManager;
-use x86_64::PhysAddr;
 static PAGER: Mutex<PageManager> = Mutex::new(PageManager {
   boot_pages: [[0 as u8; 4096]; BOOT_MEMORY_PAGES],
   boot_used: [false; BOOT_MEMORY_PAGES],

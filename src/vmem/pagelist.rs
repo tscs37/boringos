@@ -1,7 +1,6 @@
 
 
-const PagesPerBlock: usize = 449; // Readjust this when struct layout changes
-use vmem::PageSize;
+const PAGES_PER_BLOCK: usize = 449; // Readjust this when struct layout changes
 use ::core::ptr::NonNull;
 
 // we ignore address 0
@@ -55,8 +54,8 @@ impl ::core::cmp::PartialEq for PhysAddr {
 #[repr(C)]
 #[repr(align(4096))]
 pub struct PageList {
-  pub pages: [Option<PhysAddr>; PagesPerBlock],
-  pub used: [bool; PagesPerBlock],
+  pub pages: [Option<PhysAddr>; PAGES_PER_BLOCK],
+  pub used: [bool; PAGES_PER_BLOCK],
   pub next: PageListLink,
   pub prev: PageListLink,
   pub lowest: PhysAddr,
@@ -175,7 +174,7 @@ impl PageListLink {
     match self {
       PageListLink::PageListEntry(pl) => {
         let pldr = unsafe { pl.as_ref() };
-        for x in 0..PagesPerBlock {
+        for x in 0..PAGES_PER_BLOCK {
           if !pldr.used[x] && pldr.pages[x].is_some() {
             pldr.used[x];
             return pldr.pages[x].clone();
@@ -233,7 +232,7 @@ impl PageList {
     unsafe { NonNull::new_unchecked(p.as_u64() as *mut PageList) }
   }
   pub fn has_free(&self) -> bool {
-    for x in 0..PagesPerBlock {
+    for x in 0..PAGES_PER_BLOCK {
       if self.used[x] {
         return true;
       }
@@ -243,9 +242,9 @@ impl PageList {
 }
 
 fn zero_page(page: PhysAddr) {
-  use ::vmem::PageSize;
-  let page_raw = page.as_u64() as *mut [u8; PageSize];
-  for x in 0..PageSize {
+  use ::vmem::PAGE_SIZE;
+  let page_raw = page.as_u64() as *mut [u8; PAGE_SIZE];
+  for x in 0..PAGE_SIZE {
     unsafe { (*page_raw)[x] = 0x00 };
   }
 }
