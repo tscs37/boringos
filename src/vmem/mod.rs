@@ -24,8 +24,6 @@ impl<'a> PageManager {
     debug!("Initializing Page Store...");
     match self.pages {
       PageListLink::None => {
-        // We need to allocate here so we need to force open the lock for a moment
-        unsafe { ::PAGER.force_unlock(); }
         match self.get_boot_page() {
           Some(page) => {
             self.pages = PageListLink::PageListEntry(pagelist::PageList::new(page));
@@ -61,7 +59,7 @@ impl<'a> PageManager {
     PhysAddr::new((self.boot_pages[self.boot_pages.len() - 1][0] as *mut u8) as u64).expect("must have boot top")
   }
 
-  pub unsafe fn add_memory(&self, start: PhysAddr, num_pages: usize) {
+  pub unsafe fn add_memory(&mut self, start: PhysAddr, num_pages: usize) {
     debug!("enter: add_memory");
     //TODO: use self.pages.insert/append
     match self.pages {
@@ -126,12 +124,12 @@ impl<'a> ::slabmalloc::PageProvider<'a> for PageManager {
     let addr = PageManager::from_objpage(page);
     if (addr as u64) < self.get_boot_top().as_u64() {
       if addr as u64 > self.get_boot_base().as_u64() {
-        self.free_boot_page(PhysAddr::new_unchecked(addr as u64));
+        self.free_boot_page(unsafe { PhysAddr::new_unchecked(addr as u64) });
       }
     }
     match self.pages {
       PageListLink::PageListEntry(_) => {
-        self.pages.release(PhysAddr::new_unchecked(addr as u64));
+        self.pages.release(unsafe { PhysAddr::new_unchecked(addr as u64) });
       }
       _ => { panic!("tried to dealloc non-boot page without page struct") }
     }

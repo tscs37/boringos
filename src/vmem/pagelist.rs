@@ -5,6 +5,7 @@ use vmem::PageSize;
 use ::core::ptr::NonNull;
 
 // we ignore address 0
+#[derive(Clone,Copy)]
 pub struct PhysAddr(NonNull<u8>);
 
 impl ::core::fmt::Display for PhysAddr {
@@ -65,6 +66,7 @@ pub struct PageList {
 assert_eq_size!(check_page_list_size; PageList, [u8;4096]);
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct PageRange {
   pub start: PhysAddr,
   pub pages: usize,
@@ -72,6 +74,7 @@ pub struct PageRange {
   pub prev: PageListLink,
 }
 
+#[derive(Copy,Clone,Debug)]
 pub enum PageListLink {
   None,
   PageRangeEntry(NonNull<PageRange>), // Start and number of 4096 Pages
@@ -103,10 +106,10 @@ impl PageListLink {
     };
     match self {
       PageListLink::PageListEntry(pl) => {
-        pl.as_ref().next
+        unsafe { pl.as_ref().next }
       }
       PageListLink::PageRangeEntry(pr) => {
-        pr.as_ref().next
+        unsafe { pr.as_ref().next }
       }
       PageListLink::None => {
         PageListLink::None
@@ -137,7 +140,7 @@ impl PageListLink {
     let next_range = self.next_entry();
     match next_range {
       Some(r) => {
-        if r.as_ref().has_free() {
+        if unsafe { r.as_ref() }.has_free() {
           Some(r)
         } else {
           PageListLink::PageListEntry(r).next_entry_with_free()
@@ -152,10 +155,10 @@ impl PageListLink {
     };
     let next = match self {
       PageListLink::PageListEntry(pl) => {
-        pl.as_ref().next
+        unsafe { pl.as_ref().next }
       }
       PageListLink::PageRangeEntry(pr) => {
-        pr.as_ref().next
+        unsafe { pr.as_ref().next }
       }
       PageListLink::None => {
         PageListLink::None
@@ -171,11 +174,11 @@ impl PageListLink {
   pub fn grab_free(&mut self) -> Option<PhysAddr> {
     match self {
       PageListLink::PageListEntry(pl) => {
-        let pldr = pl.as_ref();
+        let pldr = unsafe { pl.as_ref() };
         for x in 0..PagesPerBlock {
           if !pldr.used[x] && pldr.pages[x].is_some() {
             pldr.used[x];
-            return pldr.pages[x];
+            return pldr.pages[x].clone();
           }
         }
       }
@@ -225,7 +228,7 @@ impl PageListLink {
 impl PageList {
   pub fn new(p: PhysAddr) -> NonNull<PageList> {
     zero_page(p);
-    NonNull::new_unchecked(p.as_u64() as *mut PageList)
+    unsafe { NonNull::new_unchecked(p.as_u64() as *mut PageList) }
   }
   pub fn has_free(&self) -> bool {
     for x in 0..PagesPerBlock {
