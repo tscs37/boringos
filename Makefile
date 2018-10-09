@@ -1,13 +1,20 @@
-.PHONY: all clean kernel release
+.PHONY: all clean kernel release rustup
 
 TARGET = x86_64-boringos
 CRATE = boringos
 QEMU_MEMORY = 1024
 QEMU_PLATFORM = system-x86_64
 
-all: kernel bootimage qemu
+all: rustup kernel bootimage qemu
 
 release: qemu_release
+
+rustup:
+	rustup toolchain add nightly-2018-10-02
+	rustup override add nightly-2018-10-02
+	rustup component add rust-src
+	cargo install cargo-xbuild
+	cargo install bootimage --version "^0.5.0"
 
 clean:
 	rm -r target/
