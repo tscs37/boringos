@@ -15,7 +15,7 @@ pub struct PageManager {
   pub use_boot_memory: bool,
   // list of 4k pages
   //pub pages: Option<Arc<UnsafeCell<BinaryHeap<PhysAddr>>>>,
-  pub pages: Option<NonNull<pagelist::PageList>>,
+  pub pages: pagelist::PageListLink,
 }
 
 impl<'a> PageManager {

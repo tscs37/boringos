@@ -178,7 +178,15 @@ impl PageListLink {
     //TODO: mark page unused
   }
   pub fn append_range(&mut self) {
-
+    //TODO: zero memory range
+    //TODO: append range to list
+  }
+  //
+  fn convert_range(&mut self, needed: usize) {
+    //TODO: scan for unused list entry slots
+    //      then fill from range
+    //      if <needed> pages were not filled up
+    //      create new, empty range and repeat
   }
 }
 
@@ -224,7 +232,7 @@ impl PageList {
   // convert_range will create a PageList and a PageRange out of a given PageListLink, which must
   // be a PageRangeEntry. The PageRange will have at most "PagesPerBlock" in pages consumed and
   // the adjusted values will be returned.
-  fn convert_range(&mut self, pll: PageListLink) -> (PageRange, *mut PageList) {
+  /*fn convert_range(&mut self, pll: PageListLink) -> (PageRange, *mut PageList) {
     if let PageListLink::PageRangeEntry(pr) = pll {
       if let Some(pla) = self.grab_free() {
         let pl = PageList::new(pla);
@@ -245,7 +253,7 @@ impl PageList {
     } else {
       panic!("attempted to convert non-pagerange to pagelist entry");
     }
-  }
+  }*/
 }
 
 fn zero_page(page: PhysAddr) {

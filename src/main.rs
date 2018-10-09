@@ -37,7 +37,7 @@ static PAGER: Mutex<PageManager> = Mutex::new(PageManager {
   boot_pages: [[0 as u8; 4096]; BOOT_MEMORY_PAGES],
   boot_used: [false; BOOT_MEMORY_PAGES],
   use_boot_memory: true,
-  pages: None,
+  pages: ::vmem::pagelist::PageListLink::None,
 });
 #[global_allocator]
 static MEM_PROVIDER: SafeZoneAllocator = SafeZoneAllocator::new(&PAGER);
