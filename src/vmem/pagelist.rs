@@ -110,6 +110,19 @@ impl PageListLink {
       next_any.next_entry()
     }
   }
+  fn next_entry_with_free(&self) -> Option<NonNull<PageList>> {
+    let next_range = self.next_entry();
+    match next_range {
+      Some(r) => {
+        if r.as_ref().has_free() {
+          Some(r)
+        } else {
+          PageListLink::PageListEntry(r).next_entry_with_free()
+        }
+      },
+      None => None,
+    }
+  }
   fn get_end(&self) -> PageListLink {
     if self.is_none() { 
       panic!("end of list went beyond end of list"); 
@@ -132,6 +145,41 @@ impl PageListLink {
       *self
     }
   }
+  pub fn grab_free(&mut self) -> Option<PhysAddr> {
+    match self {
+      PageListLink::PageListEntry(pl) => {
+        let pldr = pl.as_ref();
+        for x in 0..PagesPerBlock {
+          if !pldr.used[x] && pldr.pages[x].is_some() {
+            pldr.used[x];
+            return pldr.pages[x];
+          }
+        }
+      }
+      _ => {}
+    }
+    match self.next_entry_with_free() {
+      Some(ne) => PageListLink::PageListEntry(ne).grab_free(),
+      None => None,
+    }
+  }
+  pub fn grab_two(&mut self) -> Option<(PhysAddr, PhysAddr)> {
+    if let Some(pa) = self.grab_free() {
+      if let Some(pa2) = self.grab_free() {
+        return Some((pa, pa2))
+      } else {
+        self.release(pa);
+      }
+    }
+    None
+  }
+  pub fn release(&mut self, p: PhysAddr) {
+    //TODO: zero page content
+    //TODO: mark page unused
+  }
+  pub fn append_range(&mut self) {
+
+  }
 }
 
 impl PageList {
@@ -139,32 +187,13 @@ impl PageList {
     zero_page(p);
     p.as_u64() as *mut PageList
   }
-  pub fn grab_free(&mut self) -> Option<PhysAddr> {
+  pub fn has_free(&self) -> bool {
     for x in 0..PagesPerBlock {
-      if self.pages[x].is_some() {
-        if !self.used[x] {
-          self.used[x] = true;
-          return Some(self.pages[x].expect("tested page presence above, must exist here"));
-        }
+      if self.used[x] {
+        return true;
       }
     }
-    match self.next {
-      PageListLink::PageListEntry(next_pl) => {
-        unsafe { (*next_pl.as_ptr()).grab_free() }
-      },
-      PageListLink::PageRangeEntry(pr) => panic!("not implemented"),
-      PageListLink::None => None,
-    }
-  }
-  fn grab_two(&mut self) -> Option<(PhysAddr, PhysAddr)> {
-   if let Some(pa) = self.grab_free() {
-     if let Some(pa2) = self.grab_free() {
-       return Some((pa, pa2))
-     } else {
-       self.release(pa);
-     }
-   }
-   None
+    return false;
   }
   pub fn release(&mut self, p: PhysAddr) {
     if !(p.as_u64() < self.lowest.as_u64() || p.as_u64() > self.highest.as_u64()) {
