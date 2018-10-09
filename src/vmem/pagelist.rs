@@ -210,6 +210,8 @@ impl PageListLink {
     panic!("TODO")
   }
   pub fn insert_addr(&mut self, addr: PhysAddr) {
+    //TODO: find free slot for address
+    //      or convert page range and repeat
     panic!("TODO")
   }
   fn convert_range(&mut self, needed: usize) {
