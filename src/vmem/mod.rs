@@ -5,7 +5,6 @@ use ::vmem::pagelist::PageListLink;
 
 pub const PageSize: usize = 4096;
 
-//use x86_64::PhysAddr;
 use ::vmem::pagelist::PhysAddr;
 
 #[repr(C)]
@@ -15,7 +14,7 @@ pub struct PageManager {
   pub boot_used: [bool; ::BOOT_MEMORY_PAGES],
   pub use_boot_memory: bool,
   // list of 4k pages
-  //pub pages: Option<Arc<UnsafeCell<BinaryHeap<PhysAddr>>>>,
+  //pub pages: Option<Arc<Uns
   pub pages: pagelist::PageListLink,
 }
 
@@ -98,19 +97,6 @@ impl<'a> ::slabmalloc::PageProvider<'a> for PageManager {
     }
     None
     //TODO: use self.pages.grab_free()
-    /*match self.pages {
-      Some(ref pages) => {
-        let mut pgs = unsafe { &mut *(pages.clone()).get() };
-        match pgs.pop() {
-          Some(page) => {
-            debug!("Got a page from memory: {:#016x}", page);
-            Some(PageManager::to_objpage(page.as_u64() as *mut u8))
-          }
-          None => { None }
-        }
-      }
-      None => { None }
-    }*/
   }
   fn release_page(&mut self, page: &mut ObjectPage<'a>) {
     debug!("Releasing Page {:?}", page);

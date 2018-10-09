@@ -79,7 +79,7 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
           unsafe { 
             PAGER.lock().add_memory(
               ::vmem::pagelist::PhysAddr::new_unchecked(range.start_addr()),
-              (size / 4096) as usize
+              (size / 4096) as usize - 1
             );
             PAGER.lock().use_boot_memory = false;
           };

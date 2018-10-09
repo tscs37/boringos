@@ -8,17 +8,17 @@ use ::core::ptr::NonNull;
 #[derive(Clone,Copy)]
 pub struct PhysAddr(NonNull<u8>);
 
+assert_eq_size!(check_phys_addr_size; PhysAddr, u64);
+
 impl ::core::fmt::Display for PhysAddr {
   fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-    let string = format!("{:#018x}", self.as_u64());
-    f.pad_integral(true, "", &string)
+    f.write_fmt(format_args!("0x{:016X}", self.as_u64()))
   }
 }
 
 impl ::core::fmt::Debug for PhysAddr {
   fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-    let string = format!("{:#018x}", self.as_u64());
-    f.pad_integral(true, "", &string)
+    f.write_fmt(format_args!("0x{:016X}", self.as_u64()))
   }
 }
 
@@ -238,54 +238,6 @@ impl PageList {
     }
     return false;
   }
-  /*pub fn release(&mut self, p: PhysAddr) {
-    if !(p.as_u64() < self.lowest.as_u64() || p.as_u64() > self.highest.as_u64()) {
-      for x in 0..PagesPerBlock {
-        match self.pages[x] {
-          Some(page) => {
-            if page == p {
-              self.used[x] = false;
-              zero_page(p);
-              return;
-            }
-          }
-          None => (),
-        }
-      }
-    }
-    match self.next {
-      PageListLink::PageListEntry(next_pl) => {
-        unsafe { (*next_pl.as_ptr()).release(p) }
-      },
-      PageListLink::PageRangeEntry(pr) => panic!("not implemented"),
-      PageListLink::None => panic!("could not release address"),
-    }
-  }*/
-  // convert_range will create a PageList and a PageRange out of a given PageListLink, which must
-  // be a PageRangeEntry. The PageRange will have at most "PagesPerBlock" in pages consumed and
-  // the adjusted values will be returned.
-  /*fn convert_range(&mut self, pll: PageListLink) -> (PageRange, *mut PageList) {
-    if let PageListLink::PageRangeEntry(pr) = pll {
-      if let Some(pla) = self.grab_free() {
-        let pl = PageList::new(pla);
-        let pla_e = pla as *mut PageRange;
-        // Consume all pages that fit into the block
-        (PageListLink::PageRangeEntry(PageRange{
-          start: pa.start + PageSize * PagesPerBlock, 
-          size: pa.size - PagesPerBlock,
-          next: pa.next,
-          prev: pa.previous,
-        }), pla.as_u64() as *mut PageList)
-      } else {
-        let new_pa = pa + PageSize * (PagesPerBlock + 1);
-        let new_size = size - (PagesPerBlock + 1); // Adjust range
-        zero_page(pa);
-        (PageListLink::PageRange(new_pa, new_size), pa.as_u64() as *mut PageList)
-      }
-    } else {
-      panic!("attempted to convert non-pagerange to pagelist entry");
-    }
-  }*/
 }
 
 fn zero_page(page: PhysAddr) {
