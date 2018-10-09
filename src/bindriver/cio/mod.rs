@@ -34,3 +34,16 @@ macro_rules! debug {
       $crate::bindriver::serial::print(format_args!(concat!("    debug: ", $fmt, "\n"), $($arg)*))
     };
 }
+
+//TODO: add more debug levels:
+/* - verbose (debug+memory subsystem)
+ * - debug (without memory subsystem)
+ * - info
+ * - warn (return no error, not critical)
+ * - error (return error)
+ * - critical (run coredump then hang)
+ * - panic (no coredump, just hang)
+ */
+
+//TODO: allow hooks to get other subsystems to send
+//      and receive debug messages
