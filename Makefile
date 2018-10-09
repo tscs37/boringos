@@ -5,16 +5,16 @@ CRATE = boringos
 QEMU_MEMORY = 1024
 QEMU_PLATFORM = system-x86_64
 
-all: rustup kernel bootimage qemu
+all: kernel bootimage qemu
 
 release: qemu_release
 
-rustup:
+rustup: .rustup
 	rustup toolchain add nightly-2018-10-02
 	rustup override add nightly-2018-10-02
 	rustup component add rust-src
-	cargo install cargo-xbuild
-	cargo install bootimage --version "^0.5.0"
+	cargo install cargo-xbuild --force
+	cargo install bootimage --version "^0.5.0" --force
 
 clean:
 	rm -r target/

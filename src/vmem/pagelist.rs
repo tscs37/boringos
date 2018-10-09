@@ -55,6 +55,85 @@ pub enum PageListLink {
   PageListEntry(NonNull<PageList>),
 }
 
+impl PageListLink {
+  fn is_none(&self) -> bool {
+    match self {
+      PageListLink::None => true,
+      _ => false,
+    }
+  }
+  fn is_range(&self) -> bool {
+    match self {
+      PageListLink::PageRangeEntry(_) => true,
+      _ => false,
+    }
+  }
+  fn is_entry(&self) -> bool {
+    match self {
+      PageListLink::PageListEntry(_) => true,
+      _ => false,
+    }
+  }
+  fn next_any(&self) -> PageListLink {
+    if self.is_none() { 
+      panic!("next_any went beyond end of list"); 
+    };
+    match self {
+      PageListLink::PageListEntry(pl) => {
+        pl.as_ref().next
+      }
+      PageListLink::PageRangeEntry(pr) => {
+        pr.as_ref().next
+      }
+      PageListLink::None => {
+        PageListLink::None
+      }
+    }
+  }
+  fn next_range(&self) -> Option<NonNull<PageRange>> {
+    let next_any = self.next_any();
+    if let PageListLink::PageRangeEntry(pr) = next_any {
+      Some(pr)
+    } else if let PageListLink::None = next_any {
+      None
+    } else {
+      next_any.next_range()
+    }
+  }
+  fn next_entry(&self) -> Option<NonNull<PageList>> {
+    let next_any = self.next_any();
+    if let PageListLink::PageListEntry(pl) = next_any {
+      Some(pl)
+    } else if let PageListLink::None = next_any {
+      None
+    } else {
+      next_any.next_entry()
+    }
+  }
+  fn get_end(&self) -> PageListLink {
+    if self.is_none() { 
+      panic!("end of list went beyond end of list"); 
+    };
+    let next = match self {
+      PageListLink::PageListEntry(pl) => {
+        pl.as_ref().next
+      }
+      PageListLink::PageRangeEntry(pr) => {
+        pr.as_ref().next
+      }
+      PageListLink::None => {
+        PageListLink::None
+      }
+    };
+    if  next.is_entry() || 
+        next.is_range() {
+      next.get_end()
+    } else {
+      *self
+    }
+  }
+}
+
 impl PageList {
   pub fn new(p: PhysAddr) -> *mut PageList {
     zero_page(p);
