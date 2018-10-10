@@ -6,38 +6,52 @@
 #![feature(min_const_fn)]
 #![feature(lang_items)]
 #![feature(const_raw_ptr_to_usize_cast)]
+#![feature(asm)]
 #![no_std]
 #![no_main]
 
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate static_assertions;
 extern crate bootloader;
 extern crate volatile;
 extern crate spin;
 extern crate uart_16550;
 extern crate x86_64;
 extern crate slabmalloc;
-#[macro_use]
-extern crate static_assertions;
 extern crate alloc;
+
 #[macro_use]
 mod bindriver;
+#[macro_use]
+mod common;
 mod version;
 mod vmem;
+mod process_manager;
+mod incproc;
 
+const BOOT_MEMORY_PAGES: usize = 8;
 
-const BOOT_MEMORY_PAGES: usize = 256;
 use slabmalloc::SafeZoneAllocator;
 use spin::Mutex;
 use vmem::PageManager;
+use ::process_manager::Userspace;
+use ::core::cell::RefCell;
+use ::alloc::sync::Arc;
+
+pub use ::common::*;
+
 static PAGER: Mutex<PageManager> = Mutex::new(PageManager {
-  boot_pages: [[0 as u8; 4096]; BOOT_MEMORY_PAGES],
-  boot_used: [false; BOOT_MEMORY_PAGES],
+  first_page_mem: ::vmem::StaticPage::new(),
+  first_range_mem: ::vmem::StaticPage::new(),
+  boot_pages: [::vmem::StaticPage::new(); BOOT_MEMORY_PAGES],
   use_boot_memory: true,
   pages: ::vmem::pagelist::PageListLink::None,
 });
 #[global_allocator]
 static MEM_PROVIDER: SafeZoneAllocator = SafeZoneAllocator::new(&PAGER);
+static mut USERSPACE: Option<Arc<RefCell<Userspace>>> = None;
 
 #[no_mangle]
 pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> ! {
@@ -46,17 +60,19 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
   bindriver::cpu::idt::init_idt();
   print_green!("[ OK ]\n");
   print!("Loading VMEM Driver...");
-  debug!("Attempting to allocate memory...");
-  {
-    use alloc::boxed::Box;
-    let heap_test = Box::new(42);
-    debug!("Hello from Heap: {}, Adr={:#016x}", heap_test, heap_test.as_ref() as *const _ as usize);
-  }
   debug!("Probing existing memory ...");
   debug!("P4PTA: {:#016x}\n", boot_info.p4_table_addr);
   {
     debug!("Initializing VMEM Slab Allocator...");
     unsafe { PAGER.lock().init_page_store(); }
+    {
+        debug!("Attempting to allocate memory...");
+        {
+          use alloc::boxed::Box;
+          let heap_test = Box::new(42);
+          debug!("Hello from Heap: {}, Adr={:#016x}", heap_test, heap_test.as_ref() as *const _ as usize);
+        }
+    }
     debug!("Slab allocator initialized, adding memory");
     let mmap = &boot_info.memory_map;
     let mut usable_memory = 0;
@@ -93,23 +109,44 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
       free_memory / 1024 / 1024,
       free_memory / 4096
     );
-    //panic!("EOT");
     debug!("Testing VMEM...");
     let val = alloc::boxed::Box::new(5);
     debug!("VMEM Data: {}", val);
   }
   print_green!("[ OK ]\n");
-  print!("Initializing Process Manager & Environment...");
+  print!("Initializing Process Manager...");
+  unsafe { USERSPACE = Some(Arc::new(RefCell::new(Userspace::new()))) }
+  let us = userspace();
+  {
+    use ::process_manager::{Handle, ProcessHandle};
+    use ::alloc::string::String;
+    match us.scheduler().new_kproc(
+      &ProcessHandle::from(Handle::from(0)), 
+      &ProcessHandle::from(Handle::from(0)),
+      String::from("pid0"), 
+      ::incproc::pid0)
+      {
+        Err(_) => panic!("could not setup pid0"),
+        Ok(_) => (),
+      }
+  }
   print_green!("[ OK ]\n");
-  print!("Loading InitRamFS...");
-  //TODO:
+  print!("Initializing Process Environment...");
   print_green!("[ OK ]\n");
-  print!("Running /bin/init...");
+  println!("Yielding to scheduler...");
 
+  us.enter();
+
+  unsafe { bindriver::qemu::qemu_shutdown(); }
   panic!("Kernel terminated unexpectedly");
 }
 
 use core::panic::PanicInfo;
+
+pub fn coredump() -> ! {
+  print_red!("\n\n===== CORE DUMPED =====\n");
+  loop {}
+}
 
 /// This function is called on panic.
 #[panic_handler]

@@ -26,15 +26,6 @@ macro_rules! print_red {
     };
 }
 
-macro_rules! debug {
-    ($fmt:expr) => {
-      $crate::bindriver::serial::print(format_args!("    debug: {}\n", $fmt))
-    };
-    ($fmt:expr, $($arg:tt)*) => {
-      $crate::bindriver::serial::print(format_args!(concat!("    debug: ", $fmt, "\n"), $($arg)*))
-    };
-}
-
 //TODO: add more debug levels:
 /* - verbose (debug+memory subsystem)
  * - debug (without memory subsystem)

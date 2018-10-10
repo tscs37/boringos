@@ -2,7 +2,7 @@
 
 TARGET = x86_64-boringos
 CRATE = boringos
-QEMU_MEMORY = 1024
+QEMU_MEMORY = 512
 QEMU_PLATFORM = system-x86_64
 
 all: kernel bootimage qemu
@@ -28,17 +28,17 @@ kernel:
 qemu: bootimage
 	qemu-$(QEMU_PLATFORM) -cpu qemu64 \
 		-net none -m $(QEMU_MEMORY) \
-		-vga cirrus \
+		-vga cirrus --enable-kvm --cpu host \
 		-no-shutdown -no-reboot \
 		-drive if=ide,format=raw,file=target/$(TARGET)/debug/bootimage-$(CRATE).bin \
 		-device isa-debug-exit,iobase=0xf4,iosize=0x04 \
-		-serial mon:stdio -s
+		-serial mon:stdio -s || exit 0
 
 qemu_no_vga: bootimage
 	qemu-$(QEMU_PLATFORM) -cpu qemu64 \
 		-net none -m $(QEMU_MEMORY) \
-		-display none \
+		-display none --enable-kvm --cpu host \
 		-no-shutdown -no-reboot \
 		-drive if=ide,format=raw,file=target/$(TARGET)/debug/bootimage-$(CRATE).bin \
 		-device isa-debug-exit,iobase=0xf4,iosize=0x04 \
-		-serial mon:stdio -s
+		-serial mon:stdio -s || exit 0
