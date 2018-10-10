@@ -510,7 +510,7 @@ impl PageListLink {
     //      then fill from range
     //      if <needed> pages were not filled up
     //      create new, empty range and repeat
-    let next_range = self.get_start().next_range_with(needed);
+    let next_range = self.get_start().next_range();
     if next_range.is_none() {
       return Err("there is no range installed anywhere");
     }
@@ -536,7 +536,7 @@ impl PageListLink {
                     }
                   }
                 } else {
-                  // TODO: grab larger range/
+                  // TODO: grab larger range/fill from current range and recurse
                   Err("rref pages smaller than needed")
                 }
               }
