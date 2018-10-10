@@ -61,11 +61,11 @@ macro_rules! error {
 macro_rules! critical {
     ($fmt:expr) => {
       $crate::bindriver::serial::print(format_args!("    error: {}\n", $fmt));
-      $crate::core_dump()
+      $crate::coredump()
     };
     ($fmt:expr, $($arg:tt)*) => {
       $crate::bindriver::serial::print(format_args!(concat!("    error: ", $fmt, "\n"), $($arg)*));
-      $crate::core_dump()
+      $crate::coredump()
     };
 }
 

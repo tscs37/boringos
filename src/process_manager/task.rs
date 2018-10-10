@@ -14,6 +14,7 @@ impl Task {
     }
   }
   pub fn new_ktask_for_fn(f: fn()) -> Task {
+    warn!("new ktask, consider using a non-ktask if possible");
     Task {
       state: State::new_kernelstate(f),
       status: Status::New,

@@ -487,7 +487,7 @@ impl PageListLink {
   pub fn release(&mut self, p: PhysAddr) {
     //TODO: zero page content
     //TODO: mark page unused
-    panic!("release")
+    critical!("release page not implemented");
   }
   pub fn append_range(&mut self, base: PhysAddr, page_count: usize) {
     let mut end = self.get_end();
@@ -537,6 +537,7 @@ impl PageListLink {
                   }
                 } else {
                   // TODO: grab larger range/fill from current range and recurse
+                  error!("rref pages smaller than needed");
                   Err("rref pages smaller than needed")
                 }
               }
