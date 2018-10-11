@@ -26,10 +26,9 @@ impl Userspace {
   }
 }
 
-use ::alloc::collections::BTreeMap;
 use ::alloc::rc::Rc;
 use ::alloc::sync::Arc;
-use ::core::cell::{RefCell, Ref, RefMut};
+use ::core::cell::{RefCell, RefMut};
 pub use ::process_manager::handles::{ProcessHandle, TaskHandle, Handle};
 pub use ::process_manager::process::Process;
 pub use ::process_manager::task::Task;
@@ -45,7 +44,6 @@ pub struct Scheduler {
 }
 
 use ::alloc::string::String;
-use ::alloc::vec::Vec;
 
 impl Scheduler {
   pub fn new() -> Scheduler {
