@@ -243,6 +243,7 @@ impl ::core::fmt::Display for PageListLink {
 }
 
 impl PageListLink {
+  #[allow(dead_code)]
   pub fn dump(&self) {
     let mut page = *self;
     loop {
@@ -308,20 +309,6 @@ impl PageListLink {
       None
     } else {
       next_any.next_range()
-    }
-  }
-  fn next_range_with(&self, minsize: usize) -> Option<NonNull<PageRange>> {
-    let next_any = self.next_any();
-    if let PageListLink::PageRangeEntry(pr) = next_any {
-      if unsafe{pr.as_ref()}.pages < minsize {
-        self.next_range_with(minsize)
-      } else {
-        Some(pr)
-      }
-    } else if let PageListLink::None = next_any {
-      None
-    } else {
-      next_any.next_range_with(minsize)
     }
   }
   fn next_entry(&self) -> Option<NonNull<PageList>> {
@@ -479,16 +466,6 @@ impl PageListLink {
         }
       },
     }
-  }
-  pub fn grab_two(&mut self) -> Option<(PhysAddr, PhysAddr)> {
-    if let Some(pa) = self.grab_free() {
-      if let Some(pa2) = self.grab_free() {
-        return Some((pa, pa2))
-      } else {
-        self.release(pa);
-      }
-    }
-    None
   }
   pub fn release(&mut self, p: PhysAddr) {
     //TODO: zero page content
