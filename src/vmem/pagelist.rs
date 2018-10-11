@@ -63,6 +63,8 @@ impl ::core::cmp::PartialEq for PhysAddr {
 pub struct PageList {
   pub pages: [Option<PhysAddr>; PAGES_PER_BLOCK],
   pub used: [bool; PAGES_PER_BLOCK],
+  //TODO: we don't really need so see the previous block, first is simpler and
+  //sufficient here instead of prev
   pub next: PageListLink,
   pub prev: PageListLink,
   pub lowest: PhysAddr,
