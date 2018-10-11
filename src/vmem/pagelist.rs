@@ -30,6 +30,12 @@ impl PhysAddr {
       None => None
     }
   }
+  pub fn from(nn: NonNull<u8>) -> PhysAddr {
+    PhysAddr(nn)
+  }
+  pub fn into<T>(self) -> NonNull<T> {
+    unsafe { NonNull::new_unchecked(self.0.as_ptr() as *mut T) }
+  }
   pub unsafe fn new_unchecked(p: u64) -> PhysAddr {
     PhysAddr(NonNull::new_unchecked(p as *mut u8))
   }
@@ -75,10 +81,8 @@ assert_eq_size!(check_page_list_size; PageList, [u8;4096]);
 
 impl PageList {
   pub fn new(p: PhysAddr) -> NonNull<PageList> {
-    unsafe {
-      zero_page(p); 
-      NonNull::new_unchecked(p.as_u64() as *mut PageList) 
-    }
+    unsafe { zero_page(p); }
+    p.into::<PageList>() 
   }
   pub fn has_free(&self) -> bool {
     for x in 0..PAGES_PER_BLOCK {
