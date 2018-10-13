@@ -17,6 +17,12 @@ impl State {
       data_registers: Box::new(Registers::new()),
     }
   }
+  pub fn restore(&mut self) {
+    panic!("todo: state restore")
+  }
+  pub fn save_and_clear(&mut self) {
+    panic!("todo: state save_and_clear")
+  }
 }
 
 pub struct Registers {

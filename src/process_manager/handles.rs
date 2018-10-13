@@ -34,6 +34,12 @@ impl ProcessHandleRegistry {
   pub fn insert(&mut self, ph: &ProcessHandle, p: Rc<RefCell<Process>>) {
     self.0.insert(*ph, p);
   }
+  pub fn resolve(&self, ph: &ProcessHandle) -> Option<&Rc<RefCell<Process>>> {
+    self.0.get(ph)
+  }
+  pub fn resolve_task(&self, th: &TaskHandle) -> Option<&Rc<RefCell<Process>>> {
+    self.resolve(&th.process_handle())
+  }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -65,6 +71,9 @@ impl TaskHandleRegistry {
   }
   pub fn insert(&mut self, th: &TaskHandle, t: Rc<RefCell<Task>>) {
     self.0.insert(*th, t);
+  }
+  pub fn resolve(&self, th: &TaskHandle) -> Option<&Rc<RefCell<Task>>> {
+    self.0.get(th)
   }
 }
 

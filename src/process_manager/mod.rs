@@ -21,8 +21,8 @@ impl Userspace {
   pub fn enter(&self) {
     unsafe { self.scheduler().yield_stage2(None); }
   }
-  pub fn yield_to(&self, ph: Option<ProcessHandle>) {
-    self.scheduler().yield_to(ph);
+  pub fn yield_to(&self, th: Option<TaskHandle>) {
+    self.scheduler().yield_to(th);
   }
 }
 
@@ -39,8 +39,8 @@ use ::process_manager::handles::{ProcessHandleRegistry, TaskHandleRegistry};
 pub struct Scheduler {
   preg: Arc<RefCell<ProcessHandleRegistry>>,
   treg: Arc<RefCell<TaskHandleRegistry>>,
-  scheduler_pid: ProcessHandle,
-  pid_provider_pid: ProcessHandle,
+  scheduler_thandle: TaskHandle,
+  pid_provider_thandle: TaskHandle,
 }
 
 use ::alloc::string::String;
@@ -50,8 +50,8 @@ impl Scheduler {
     Scheduler {
       treg: Arc::new(RefCell::new(TaskHandleRegistry::new())),
       preg: Arc::new(RefCell::new(ProcessHandleRegistry::new())),
-      scheduler_pid: ProcessHandle::from(Handle::from(0)),
-      pid_provider_pid: ProcessHandle::from(Handle::from(0)),
+      scheduler_thandle: TaskHandle::from(ProcessHandle::from(Handle::from(0)), Handle::from(0)),
+      pid_provider_thandle: TaskHandle::from(ProcessHandle::from(Handle::from(0)), Handle::from(0)),
     }
   }
   pub fn register_process(&mut self, ph: &ProcessHandle, p: Rc<RefCell<Process>>) {
@@ -80,11 +80,34 @@ impl Scheduler {
   // yield_to will save the current process and task context and then
   // call yield_stage2 with the given process handle
   // this function will be called by the scheduler
-  pub fn yield_to(&self, ph: Option<ProcessHandle>) {
+  pub fn yield_to(&self, th: Option<TaskHandle>) {
     panic!("TODO: implement yield_to");
   }
-  // yield_stage2 will begin running the specified process handle
-  pub unsafe fn yield_stage2(&self, ph: Option<ProcessHandle>) {
+  // yield_stage2 will begin running the specified task handle
+  pub unsafe fn yield_stage2(&self, th: Option<TaskHandle>) {
+    match th {
+      None => self.yield_stage2(Some(self.scheduler_thandle)),
+      Some(th) => {
+        if let Some(task) = (*self.treg).borrow().resolve(&th) {
+          use self::task::Status;
+          let mut taskb = (*task).borrow_mut();
+          match taskb.status() {
+            Status::New => taskb.restore(),
+            Status::Running => panic!("TODO: implement running non-yield"),
+            Status::Runnable => panic!("TODO: implement runnable yield"),
+            Status::Blocked(_) => panic!("TODO: implement blockable task"),
+            Status::Stopped(_) => panic!("TODO: implement stopped task"),
+            Status::Shelled(_) => self.yield_stage2(None), // Cannot be run, re-yield to scheduler
+            Status::Destroyed => panic!("TODO: implement destroyed task"),
+            Status::IPCFunction => self.yield_stage2(None), // Cannot be run, re-yield to scheduler
+            Status::Stateless => panic!("TODO: implement stateless task"),
+          }
+        } else {
+          self.yield_stage2(Some(
+            TaskHandle::from(ProcessHandle::from(Handle::from(0)), Handle::from(0))))
+        }
+      }
+    }
     panic!("TODO: implement yield_stage2");
   }
 }

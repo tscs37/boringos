@@ -2,13 +2,45 @@
 
 const PAGES_PER_BLOCK: usize = 448; // Readjust this when struct layout changes
 use ::core::ptr::NonNull;
+use ::core::cmp::Ordering;
 
 // we ignore address 0
 #[derive(Clone,Copy)]
 pub struct PhysAddr(NonNull<u8>);
 
+#[repr(C)]
+#[repr(align(4096))]
+pub struct PageList {
+  pub pages: [Option<PhysAddr>; PAGES_PER_BLOCK],
+  pub used: [bool; PAGES_PER_BLOCK],
+  //TODO: we don't really need so see the previous block, first is simpler and
+  //sufficient here instead of prev
+  pub next: PageListLink,
+  pub prev: PageListLink,
+  pub lowest: PhysAddr,
+  pub highest: PhysAddr,
+}
 
-assert_eq_size!(check_phys_addr_size; PhysAddr, u64);
+#[repr(C)]
+#[repr(align(4096))]
+#[derive(Debug)]
+pub struct PageRange {
+  pub start: PhysAddr,
+  pub pages: usize,
+  pub next: PageListLink,
+  pub prev: PageListLink,
+}
+
+#[derive(Copy,Clone,Debug,PartialEq)]
+pub enum PageListLink {
+  None,
+  PageRangeEntry(NonNull<PageRange>), // Start and number of 4096 Pages
+  PageListEntry(NonNull<PageList>),
+}
+
+assert_eq_size!(check_phys_addr_size; PhysAddr,    u64);
+assert_eq_size!(check_page_list_size; PageList,    [u8; 4096]);
+assert_eq_size!(check_page_range_size; PageRange,  [u8; 4096]);
 
 impl ::core::fmt::Display for PhysAddr {
   fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
@@ -22,6 +54,53 @@ impl ::core::fmt::Debug for PhysAddr {
   }
 }
 
+impl ::core::fmt::Debug for PageList {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    f.write_fmt(format_args!("PageList(prev={:#018x},next={:#018x},lowest={},highest={},free={})",
+      self.prev.get_ptru64(), self.next.get_ptru64(), 
+      self.lowest, self.highest, 
+      self.count_free(),
+    ))
+  }
+}
+
+impl ::core::fmt::Display for PageList {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    f.write_fmt(format_args!("{:?}", self))
+  }
+}
+
+impl ::core::fmt::Display for PageRange {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    f.write_fmt(format_args!("{:?}", self))
+  }
+}
+
+impl ::core::cmp::PartialEq for PhysAddr {
+  fn eq(&self, rhs: &PhysAddr) -> bool {
+    self.as_u64() == rhs.as_u64()
+  }
+}
+
+impl ::core::cmp::PartialOrd for PhysAddr {
+  fn partial_cmp(&self, rhs: &PhysAddr) -> Option<Ordering> {
+    self.as_u64().partial_cmp(&rhs.as_u64())
+  }
+}
+
+impl ::core::fmt::Display for PageListLink {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    match self {
+      PageListLink::None => { f.write_str("None") },
+      PageListLink::PageListEntry(pe) => { 
+        f.write_fmt(format_args!("List={:#018x})", pe.as_ptr() as usize))
+      },
+      PageListLink::PageRangeEntry(pe) => { 
+        f.write_fmt(format_args!("Range={:#018x}", pe.as_ptr() as usize))
+      },
+    }
+  }
+}
 
 impl PhysAddr {
   pub fn new(p: u64) -> Option<PhysAddr> {
@@ -67,32 +146,6 @@ impl PhysAddr {
   }
 }
 
-impl ::core::cmp::PartialEq for PhysAddr {
-  fn eq(&self, rhs: &PhysAddr) -> bool {
-    self.as_u64() == rhs.as_u64()
-  }
-}
-
-impl ::core::cmp::PartialOrd for PhysAddr {
-  fn partial_cmp(&self, rhs: &PhysAddr) -> core::option::Option<core::cmp::Ordering> {
-    self.as_u64().partial_cmp(&rhs.as_u64())
-  }
-}
-
-#[repr(C)]
-#[repr(align(4096))]
-pub struct PageList {
-  pub pages: [Option<PhysAddr>; PAGES_PER_BLOCK],
-  pub used: [bool; PAGES_PER_BLOCK],
-  //TODO: we don't really need so see the previous block, first is simpler and
-  //sufficient here instead of prev
-  pub next: PageListLink,
-  pub prev: PageListLink,
-  pub lowest: PhysAddr,
-  pub highest: PhysAddr,
-}
-
-assert_eq_size!(check_page_list_size; PageList, [u8;4096]);
 
 impl PageList {
   pub fn new(p: PhysAddr) -> NonNull<PageList> {
@@ -165,38 +218,6 @@ impl PageList {
   }
 }
 
-impl ::core::fmt::Debug for PageList {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-    f.write_fmt(format_args!("PageList(prev={:#018x},next={:#018x},lowest={},highest={},free={})",
-      self.prev.get_ptru64(), self.next.get_ptru64(), 
-      self.lowest, self.highest, 
-      self.count_free(),
-    ))
-  }
-}
-
-impl ::core::fmt::Display for PageList {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-    f.write_fmt(format_args!("{:?}", self))
-  }
-}
-
-#[repr(C)]
-#[repr(align(4096))]
-#[derive(Debug)]
-pub struct PageRange {
-  pub start: PhysAddr,
-  pub pages: usize,
-  pub next: PageListLink,
-  pub prev: PageListLink,
-}
-
-impl ::core::fmt::Display for PageRange {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-    f.write_fmt(format_args!("{:?}", self))
-  }
-}
-
 impl PageRange {
   pub fn new(p: PhysAddr, base: PhysAddr, size: usize) -> NonNull<PageRange> {
     unsafe {
@@ -230,29 +251,6 @@ impl PageRange {
       ) };
       self.pages -= pages;
       Some(pr)
-    }
-  }
-}
-
-assert_eq_size!(check_page_range_size; PageRange, [u8;4096]);
-
-#[derive(Copy,Clone,Debug,PartialEq)]
-pub enum PageListLink {
-  None,
-  PageRangeEntry(NonNull<PageRange>), // Start and number of 4096 Pages
-  PageListEntry(NonNull<PageList>),
-}
-
-impl ::core::fmt::Display for PageListLink {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-    match self {
-      PageListLink::None => { f.write_str("None") },
-      PageListLink::PageListEntry(pe) => { 
-        f.write_fmt(format_args!("List={:#018x})", pe.as_ptr() as usize))
-      },
-      PageListLink::PageRangeEntry(pe) => { 
-        f.write_fmt(format_args!("Range={:#018x}", pe.as_ptr() as usize))
-      },
     }
   }
 }
@@ -444,47 +442,36 @@ impl PageListLink {
     }
   }
   pub fn grab_free(&mut self) -> Option<PhysAddr> {
-    //debug!("grabbing a page from memory subsystem");
     match self {
       PageListLink::PageListEntry(pl) => {
-        //debug!("got PLE, searching block...");
         let pldr = unsafe { pl.as_mut() };
         for x in 0..PAGES_PER_BLOCK {
           if !pldr.used[x] && pldr.pages[x].is_some() {
-            //debug!("found block in PLE, grabbing...");
             pldr.used[x] = true;
             let addr = pldr.pages[x].
               expect("nonused page grabbed but was none");
-            debug!("using page {}", addr);
             return Some(addr);
           }
         }
-        //debug!("PLE was empty, moving to next block...");
       }
       _ => {
-        //debug!("no PLE, directing to next entry");
       }
     }
     // skip one entry ahead to avoid recursion into self
     match self.next_any().next_entry_with_free() {
       Some(ne) => {
-        //debug!("found next PLE, recursing...");
         PageListLink::PageListEntry(ne).grab_free()
       },
       None => {
-        //debug!("No more PLEs, attempting to grab address from PRE...");
         match self.get_start().convert_range(1) {
-          Ok(pages) => debug!("converted {} pages", pages),
+          Ok(_) => (), //debug!("converted {} pages", pages),
           Err(e) => panic!("conversion failed: {}", e),
         }
-        //debug!("Retrying after PRE convert...");
         match self.get_start().next_entry_with_free() {
           Some(ne) => {
-            //debug!("found next PLE at retry, grabbing page...");
             PageListLink::PageListEntry(ne).grab_free()
           },
           None => {
-            //debug!("No more PLEs, PRE didn't give us a page :(");
             None
           },
         }
@@ -492,8 +479,6 @@ impl PageListLink {
     }
   }
   pub fn release(&mut self, p: PhysAddr) {
-    //TODO: zero page content
-    //TODO: mark page unused
     unsafe { zero_page(p) };
     let mut cur = Some(*self);
     loop {
@@ -503,6 +488,7 @@ impl PageListLink {
           match cur_o {
             PageListLink::None => {
               warn!("page {} not tracked, leaking it", p);
+              return;
               //self.get_start().append_range(p, 1);
             },
             PageListLink::PageListEntry(mut ple_ptr) => {
@@ -547,15 +533,10 @@ impl PageListLink {
     }
   }
   fn convert_range<'a>(&mut self, needed: usize) -> Result<usize, &'a str> {
-    //TODO: scan for unused list entry slots
-    //      then fill from range
-    //      if <needed> pages were not filled up
-    //      create new, empty range and repeat
     let next_range = self.get_start().next_range();
     if next_range.is_none() {
       return Err("there is no range installed anywhere");
     }
-    //debug!("using range: {:?}", next_range);
     let mut copy_self = *self;
     match copy_self {
       PageListLink::None => Err("attempted to convert after end of list"),
@@ -575,6 +556,7 @@ impl PageListLink {
                       //debug!("inserting range {:?} into pref", er);
                       pref.insert_from_range(er);
                       if rref.pages == 0 {
+                        debug!("page range has no pages left, cleaning it up");
                         let range_entry = PageListLink::PageRangeEntry(
                           unsafe{NonNull::new_unchecked(rref)});
                         let mut prev = range_entry.get_prev();
@@ -592,9 +574,17 @@ impl PageListLink {
                     }
                   }
                 } else {
-                  // TODO: grab larger range/fill from current range and recurse
-                  error!("rref pages smaller than needed: {} < {}", rref.pages, needed);
-                  Err("rref pages smaller than needed")
+                  let max_needed = needed- rref.pages;
+                  // convert all pages we have
+                  return match self.convert_range(rref.pages) {
+                    Ok(a) => {
+                      match self.convert_range(max_needed) {
+                        Ok(b) => Ok(a+b),
+                        Err(e) => Err(e),
+                      }
+                    }
+                    Err(e) => Err(e),
+                  };
                 }
               }
             }

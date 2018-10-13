@@ -20,8 +20,20 @@ impl Task {
       status: Status::New,
     }
   }
+  pub fn status(&self) -> Status {
+    self.status
+  }
+  pub fn restore(&mut self) {
+    self.status = Status::Running;
+    self.state.restore()
+  }
+  pub fn save_and_clear(&mut self) {
+    self.status = Status::Runnable;
+    self.state.save_and_clear()
+  }
 }
 
+#[derive(Copy, Clone)]
 pub enum Status {
   New, // Task is new and not yet started
   Running,

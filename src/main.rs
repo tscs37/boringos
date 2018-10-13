@@ -24,15 +24,15 @@ extern crate slabmalloc;
 extern crate alloc;
 
 #[macro_use]
-mod bindriver;
-#[macro_use]
 mod common;
+#[macro_use]
+mod bindriver;
 mod version;
 mod vmem;
 mod process_manager;
 mod incproc;
 
-const BOOT_MEMORY_PAGES: usize = 8;
+const BOOT_MEMORY_PAGES: usize = 32;
 
 use slabmalloc::SafeZoneAllocator;
 use spin::Mutex;
@@ -40,6 +40,7 @@ use vmem::PageManager;
 use ::process_manager::Userspace;
 use ::core::cell::RefCell;
 use ::alloc::sync::Arc;
+use ::alloc::vec::Vec;
 
 pub use ::common::*;
 
@@ -57,80 +58,92 @@ static mut USERSPACE: Option<Arc<RefCell<Userspace>>> = None;
 #[no_mangle]
 pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> ! {
   println!("BoringOS v{}\n", version::VERSION);
-  print!("Initializing IDT...");
-  bindriver::cpu::idt::init_idt();
-  print_green!("[ OK ]\n");
-  print!("Loading VMEM Driver...");
-  debug!("Probing existing memory ...");
-  debug!("P4CTA: {:#018x}\n", ::vmem::pagetable::P4 as u64);
-  debug!("P4PTA: {:#018x}\n", boot_info.p4_table_addr);
-  assert!(boot_info.p4_table_addr == ::vmem::pagetable::P4 as u64);
   {
-    debug!("Initializing VMEM Slab Allocator...");
-    unsafe { PAGER.lock().init_page_store(); }
-    debug!("Slab allocator initialized, adding memory");
-    let mmap = &boot_info.memory_map;
-    let mut usable_memory = 0;
-    use core::ops::Deref;
-    let mmap_entries = mmap.deref();
-    for x in 0..mmap_entries.len() {
-      let entry = mmap_entries[x];
-      let range = entry.range;
-      debug!("MMAPE: {:#04x} {:#016x}-{:#016x}: {:?}\n", x,
-          range.start_addr(), range.end_addr(), entry.region_type);
-      use bootloader::bootinfo::MemoryRegionType;
-      match entry.region_type {
-        MemoryRegionType::Usable => { 
-          let size = range.end_addr() - range.start_addr();
-          debug!("Adding MMAPE {:#04x} to usable memory... {} KiBytes, {} Pages", x, size / 1024, size / 4096);
-          usable_memory += size;
-          unsafe { 
-            PAGER.lock().add_memory(
-              ::vmem::pagelist::PhysAddr::new_unchecked(range.start_addr()),
-              (size / 4096) as usize - 1
-            );
-            PAGER.lock().use_boot_memory = false;
-          };
-        },
-        _ => {}
+    print!("Initializing CPU...");
+    bindriver::cpu::idt::init_idt();
+    print_green!("[ OK ]\n");
+  }
+  {
+    print!("Initializing VMEM...");
+    debug!("Probing existing memory ...");
+    debug!("P4CTA: {:#018x}\n", ::vmem::pagetable::P4 as u64);
+    debug!("P4PTA: {:#018x}\n", boot_info.p4_table_addr);
+    assert!(boot_info.p4_table_addr == ::vmem::pagetable::P4 as u64);
+    {
+      debug!("Initializing VMEM Slab Allocator...");
+      unsafe { PAGER.lock().init_page_store(); }
+      debug!("Slab allocator initialized, adding memory");
+      let mmap = &boot_info.memory_map;
+      let mut usable_memory = 0;
+      use core::ops::Deref;
+      let mmap_entries = mmap.deref();
+      for x in 0..mmap_entries.len() {
+        let entry = mmap_entries[x];
+        let range = entry.range;
+        debug!("MMAPE: {:#04x} {:#016x}-{:#016x}: {:?}\n", x,
+            range.start_addr(), range.end_addr(), entry.region_type);
+        use bootloader::bootinfo::MemoryRegionType;
+        match entry.region_type {
+          MemoryRegionType::Usable => { 
+            let size = range.end_addr() - range.start_addr();
+            debug!("Adding MMAPE {:#04x} to usable memory... {} KiBytes, {} Pages", x, size / 1024, size / 4096);
+            usable_memory += size;
+            unsafe { 
+              PAGER.lock().add_memory(
+                ::vmem::pagelist::PhysAddr::new_unchecked(range.start_addr()),
+                (size / 4096) as usize - 1
+              );
+              PAGER.lock().use_boot_memory = false;
+            };
+          },
+          _ => {}
+        }
       }
+      debug!("Total usable memory: {:16} KiB, {:8} MiB", usable_memory / 1024, 
+        usable_memory / 1024 / 1024);
+      let free_memory = PAGER.lock().free_memory();
+      debug!("Available memory: {} Bytes, {} KiB, {} MiB, {} Pages", 
+        free_memory,
+        free_memory / 1024,
+        free_memory / 1024 / 1024,
+        free_memory / 4096
+      );
+      debug!("Testing VMEM...");
+      let val = alloc::boxed::Box::new(5);
+      debug!("VMEM Data: {}", val);
     }
-    debug!("Total usable memory: {:16} KiB, {:8} MiB", usable_memory / 1024, 
-      usable_memory / 1024 / 1024);
-    let free_memory = PAGER.lock().free_memory();
-    debug!("Available memory: {} Bytes, {} KiB, {} MiB, {} Pages", 
-      free_memory,
-      free_memory / 1024,
-      free_memory / 1024 / 1024,
-      free_memory / 4096
-    );
-    debug!("Testing VMEM...");
-    let val = alloc::boxed::Box::new(5);
-    debug!("VMEM Data: {}", val);
+    print_green!("[ OK ]\n");
   }
-  print_green!("[ OK ]\n");
-  print!("Initializing Process Manager...");
-  unsafe { USERSPACE = Some(Arc::new(RefCell::new(Userspace::new()))) }
-  let us = userspace();
   {
-    use ::process_manager::{Handle, ProcessHandle};
-    use ::alloc::string::String;
-    match us.scheduler().new_kproc(
-      &ProcessHandle::from(Handle::from(0)), 
-      &ProcessHandle::from(Handle::from(0)),
-      String::from("pid0"), 
-      ::incproc::pid0)
-      {
-        Err(_) => panic!("could not setup pid0"),
-        Ok(_) => (),
-      }
+    print!("Initializing Process Manager...");
+    unsafe { USERSPACE = Some(Arc::new(RefCell::new(Userspace::new()))) }
+    let us = userspace();
+    {
+      use ::process_manager::{Handle, ProcessHandle};
+      use ::alloc::string::String;
+      match us.scheduler().new_kproc(
+        &ProcessHandle::from(Handle::from(0)), 
+        &ProcessHandle::from(Handle::from(0)),
+        String::from("pid0"), 
+        ::incproc::pid0)
+        {
+          Err(_) => {
+            print_red!("[FAIL]");
+            panic!("could not setup pid0")
+          },
+          Ok(_) => (),
+        }
+    }
+    print_green!("[ OK ]\n");
   }
-  print_green!("[ OK ]\n");
-  print!("Initializing Process Environment...");
-  print_green!("[ OK ]\n");
+  {
+    print!("Initializing Process Environment...");
+    //TODO: write penv
+    print_red!("[TODO]\n");
+  }
   println!("Yielding to scheduler...");
 
-  us.enter();
+  userspace().enter();
 
   unsafe { bindriver::qemu::qemu_shutdown(); }
   panic!("Kernel terminated unexpectedly");

@@ -1,8 +1,10 @@
 
 use ::USERSPACE;
 use ::process_manager::Userspace;
-use ::process_manager::ProcessHandle;
+use ::process_manager::TaskHandle;
 use ::core::cell::Ref;
+
+#[allow(dead_code)]
 
 pub fn userspace<'a>() -> Ref<'static, Userspace> {
   unsafe {
@@ -10,8 +12,8 @@ pub fn userspace<'a>() -> Ref<'static, Userspace> {
   }
 }
 
-pub fn yield_to(ph: Option<ProcessHandle>) {
-  userspace().yield_to(ph)
+pub fn yield_to(th: Option<TaskHandle>) {
+  userspace().yield_to(th)
 }
 
 pub fn alloc_page() -> Option<::vmem::PhysAddr> {
@@ -42,10 +44,10 @@ macro_rules! info {
 
 macro_rules! warn {
     ($fmt:expr) => {
-      $crate::bindriver::serial::print(format_args!("    warn : {}\n", $fmt))
+      $crate::bindriver::serial::print(format_args!("    warn : {}\n", $fmt));
     };
     ($fmt:expr, $($arg:tt)*) => {
-      $crate::bindriver::serial::print(format_args!(concat!("    warn : ", $fmt, "\n"), $($arg)*))
+      $crate::bindriver::serial::print(format_args!(concat!("    warn : ", $fmt, "\n"), $($arg)*));
     };
 }
 
