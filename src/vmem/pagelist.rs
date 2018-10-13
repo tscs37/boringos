@@ -502,8 +502,8 @@ impl PageListLink {
         Some(cur_o) => {
           match cur_o {
             PageListLink::None => {
-              warn!("page {} not tracked, inserting into tracking", p);
-              self.get_start().append_range(p, 1);
+              warn!("page {} not tracked, leaking it", p);
+              //self.get_start().append_range(p, 1);
             },
             PageListLink::PageListEntry(mut ple_ptr) => {
               debug!("checking page list: {}", cur_o);
