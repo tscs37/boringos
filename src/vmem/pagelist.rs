@@ -25,6 +25,9 @@ impl ::core::fmt::Debug for PhysAddr {
 
 impl PhysAddr {
   pub fn new(p: u64) -> Option<PhysAddr> {
+    assert!(p < 0x0000_8000_0000_0000 ||
+      p >= 0xffff_8000_0000_0000,
+      "invalid address: {:#018x}", p);
     match NonNull::new(p as *mut u8) {
       Some(nn) => Some(PhysAddr(nn)),
       None => None
@@ -38,6 +41,12 @@ impl PhysAddr {
   }
   pub unsafe fn new_unchecked(p: u64) -> PhysAddr {
     PhysAddr(NonNull::new_unchecked(p as *mut u8))
+  }
+  pub fn new_or_abort(p: u64) -> PhysAddr {
+    match PhysAddr::new(p) {
+      None => panic!("could not create physaddr for {:#018x}, probably was null or illegal", p),
+      Some(pa) => pa
+    }
   }
   // Adds the specified number of pages as offset and returns the result as PhysAddr
   pub unsafe fn add_pages(&self, pages: u64) -> PhysAddr {
@@ -61,6 +70,12 @@ impl PhysAddr {
 impl ::core::cmp::PartialEq for PhysAddr {
   fn eq(&self, rhs: &PhysAddr) -> bool {
     self.as_u64() == rhs.as_u64()
+  }
+}
+
+impl ::core::cmp::PartialOrd for PhysAddr {
+  fn partial_cmp(&self, rhs: &PhysAddr) -> core::option::Option<core::cmp::Ordering> {
+    self.as_u64().partial_cmp(&rhs.as_u64())
   }
 }
 
@@ -221,7 +236,7 @@ impl PageRange {
 
 assert_eq_size!(check_page_range_size; PageRange, [u8;4096]);
 
-#[derive(Copy,Clone,Debug)]
+#[derive(Copy,Clone,Debug,PartialEq)]
 pub enum PageListLink {
   None,
   PageRangeEntry(NonNull<PageRange>), // Start and number of 4096 Pages
@@ -421,6 +436,13 @@ impl PageListLink {
       PageListLink::None => { panic!("attempted to set prev of none"); }
     }
   }
+  pub fn get_prev(&self) -> PageListLink {
+    match self {
+      PageListLink::None => PageListLink::None,
+      PageListLink::PageListEntry(ple) => unsafe{ple.as_ref()}.prev,
+      PageListLink::PageRangeEntry(pre) => unsafe{pre.as_ref()}.prev,
+    }
+  }
   pub fn grab_free(&mut self) -> Option<PhysAddr> {
     //debug!("grabbing a page from memory subsystem");
     match self {
@@ -431,8 +453,10 @@ impl PageListLink {
           if !pldr.used[x] && pldr.pages[x].is_some() {
             //debug!("found block in PLE, grabbing...");
             pldr.used[x] = true;
-            return Some(pldr.pages[x].
-              expect("nonused page grabbed but was none"));
+            let addr = pldr.pages[x].
+              expect("nonused page grabbed but was none");
+            debug!("using page {}", addr);
+            return Some(addr);
           }
         }
         //debug!("PLE was empty, moving to next block...");
@@ -470,7 +494,41 @@ impl PageListLink {
   pub fn release(&mut self, p: PhysAddr) {
     //TODO: zero page content
     //TODO: mark page unused
-    critical!("release page not implemented");
+    unsafe { zero_page(p) };
+    let mut cur = Some(*self);
+    loop {
+      match cur {
+        None => panic!("release page encountered empty entry in pagelist"),
+        Some(cur_o) => {
+          match cur_o {
+            PageListLink::None => {
+              warn!("page {} not tracked, inserting into tracking", p);
+              self.get_start().append_range(p, 1);
+            },
+            PageListLink::PageListEntry(mut ple_ptr) => {
+              debug!("checking page list: {}", cur_o);
+              let ple = unsafe { ple_ptr.as_mut() };
+              if !(ple.highest < p || ple.lowest > p) {
+                for x in 0..PAGES_PER_BLOCK {
+                  if let Some(ple_pa) = ple.pages[x] {
+                    debug!("check if page matches {}", ple_pa);
+                    if ple_pa == p {
+                      debug!("found page, marking unused");
+                      ple.used[x] = false;
+                      return;
+                    }
+                  }
+                }
+              }
+              cur = Some(cur_o.next_any());
+            }
+            PageListLink::PageRangeEntry(_) => {
+              cur = Some(cur_o.next_any());
+            }
+          }
+        }
+      }
+    }
   }
   pub fn append_range(&mut self, base: PhysAddr, page_count: usize) {
     let mut end = self.get_end();
@@ -498,7 +556,8 @@ impl PageListLink {
       return Err("there is no range installed anywhere");
     }
     //debug!("using range: {:?}", next_range);
-    match self {
+    let mut copy_self = *self;
+    match copy_self {
       PageListLink::None => Err("attempted to convert after end of list"),
       PageListLink::PageRangeEntry(_) => Err("cannot convert page entry"),
       PageListLink::PageListEntry(ref mut p) => {
@@ -515,12 +574,26 @@ impl PageListLink {
                     Some(er) => {
                       //debug!("inserting range {:?} into pref", er);
                       pref.insert_from_range(er);
+                      if rref.pages == 0 {
+                        let range_entry = PageListLink::PageRangeEntry(
+                          unsafe{NonNull::new_unchecked(rref)});
+                        let mut prev = range_entry.get_prev();
+                        let mut next = range_entry.next_any();
+                        assert_ne!(prev, PageListLink::None, "list can only cut toward end, cannot cut at first page");
+                        if next == PageListLink::None {
+                          prev.set_next(next);
+                        } else {
+                          prev.set_next(next);
+                          next.set_prev(prev);
+                        }
+                        self.release(PhysAddr::new_or_abort(rref as *mut _ as u64));
+                      }
                       return Ok(needed);
                     }
                   }
                 } else {
                   // TODO: grab larger range/fill from current range and recurse
-                  error!("rref pages smaller than needed");
+                  error!("rref pages smaller than needed: {} < {}", rref.pages, needed);
                   Err("rref pages smaller than needed")
                 }
               }

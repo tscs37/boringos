@@ -13,6 +13,8 @@
 extern crate lazy_static;
 #[macro_use]
 extern crate static_assertions;
+#[macro_use]
+extern crate bitflags;
 extern crate bootloader;
 extern crate volatile;
 extern crate spin;
@@ -60,18 +62,12 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
   print_green!("[ OK ]\n");
   print!("Loading VMEM Driver...");
   debug!("Probing existing memory ...");
-  debug!("P4PTA: {:#016x}\n", boot_info.p4_table_addr);
+  debug!("P4CTA: {:#018x}\n", ::vmem::pagetable::P4 as u64);
+  debug!("P4PTA: {:#018x}\n", boot_info.p4_table_addr);
+  assert!(boot_info.p4_table_addr == ::vmem::pagetable::P4 as u64);
   {
     debug!("Initializing VMEM Slab Allocator...");
     unsafe { PAGER.lock().init_page_store(); }
-    {
-        debug!("Attempting to allocate memory...");
-        {
-          use alloc::boxed::Box;
-          let heap_test = Box::new(42);
-          debug!("Hello from Heap: {}, Adr={:#016x}", heap_test, heap_test.as_ref() as *const _ as usize);
-        }
-    }
     debug!("Slab allocator initialized, adding memory");
     let mmap = &boot_info.memory_map;
     let mut usable_memory = 0;

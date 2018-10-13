@@ -13,6 +13,7 @@ rustup: .rustup
 	rustup toolchain add nightly-2018-10-02
 	rustup override add nightly-2018-10-02
 	rustup component add rust-src
+	rustup component add rls-preview rust-analysis
 	cargo install cargo-xbuild --force
 	cargo install bootimage --version "^0.5.0" --force
 

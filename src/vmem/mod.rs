@@ -1,4 +1,6 @@
 pub mod pagelist;
+pub mod pagetable;
+pub mod mapper;
 
 use ::slabmalloc::ObjectPage;
 use ::vmem::pagelist::PageListLink;

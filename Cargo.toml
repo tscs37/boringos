@@ -11,6 +11,7 @@ uart_16550 = "0.1.0"
 x86_64 = "0.2.8"
 slabmalloc = "0.3.0"
 static_assertions = "0.2.5"
+bitflags = "1.0.4"
 
 [dependencies.lazy_static]
 version = "1.0"
