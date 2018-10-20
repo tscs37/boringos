@@ -19,6 +19,7 @@ impl Userspace {
     (*self.scheduler).borrow_mut()
   }
   pub fn enter(&self) {
+    debug!("going for yield_stage2, direct entry into PID0");
     unsafe { self.scheduler().yield_stage2(None); }
   }
   pub fn yield_to(&self, th: Option<TaskHandle>) {
@@ -81,6 +82,7 @@ impl Scheduler {
   // call yield_stage2 with the given process handle
   // this function will be called by the scheduler
   pub fn yield_to(&self, th: Option<TaskHandle>) {
+    //TODO: save all registers, pivot to kernel stack
     panic!("TODO: implement yield_to");
   }
   // yield_stage2 will begin running the specified task handle

@@ -18,9 +18,22 @@ impl State {
     }
   }
   pub fn restore(&mut self) {
+    debug!("mapping stack of new process");
     self.stack.map();
-    panic!("todo: state restore")
+    debug!("loading RIP and RSP");
+    let rip = self.instr_ptr.as_usize();
+    let regs = self.data_registers.as_ref();
+    debug!("prepare to yield");
+    unsafe { asm!(
+      "
+      push $1
+      ret
+      "
+       : : "{rsp}"(regs.rsp), "r"(rip) : 
+       "rsp") }
   }
+  #[inline(never)]
+  #[naked]
   pub fn save_and_clear(&mut self) {
     panic!("todo: state save_and_clear")
   }
@@ -40,7 +53,7 @@ impl Registers {
     Registers{
       rax: 0, rbx: 0, rcx: 0, rdx: 0,
       rsi: 0, rdi: 0,
-      rbp: 0, rsp: 0,
+      rbp: 0, rsp: ::vmem::STACK_START as u64,
       r8: 0, r9: 0, r10: 0, r11: 0, 
       r12: 0, r13: 0, r14: 0, r15: 0,
       rflags: 0,

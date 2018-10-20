@@ -26,9 +26,22 @@ pub fn map(base_addr: PhysAddr, pl: Vec<PhysAddr>, mt: MapType) {
     MapType::Guard => EntryFlags::NO_EXECUTE,
   };
   for x in 0..pl.len() {
-    let addr = base_addr.as_usize() + x * PAGE_SIZE;
+    let addr = base_addr.as_usize() - x * PAGE_SIZE;
     apt.map_to(Page::containing_address(addr), pl[x], flags, pm);
-  }
+  };
+  match mt {
+    _ => (),
+    Stack => {
+      let guard_addr = unsafe { PhysAddr::new_unchecked(
+        base_addr.as_u64() + PAGE_SIZE as u64) };
+      let guard_addr_op = unsafe { PhysAddr::new_unchecked(
+        base_addr.as_u64() + ((pl.len() + 1) * PAGE_SIZE) as u64)
+      };
+      let guard_map = unsafe { vec!(PhysAddr::new_unchecked(::vmem::GUARD_PAGE as u64)) };
+      map(guard_addr, guard_map.clone(), MapType::Guard);
+      map(guard_addr_op, guard_map.clone(), MapType::Guard);
+    }
+  };
 }
 
 pub fn unmap(base_addr: PhysAddr, pl: Vec<PhysAddr>) {

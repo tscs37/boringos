@@ -6,6 +6,7 @@
 #![feature(lang_items)]
 #![feature(const_raw_ptr_to_usize_cast)]
 #![feature(asm)]
+#![feature(naked_functions)]
 #![no_std]
 #![no_main]
 
@@ -141,6 +142,7 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
     vga_print_red!("[TODO]\n");
   }
   vga_println!("Yielding to scheduler...");
+  debug!("entering userspace");
 
   userspace().enter();
 

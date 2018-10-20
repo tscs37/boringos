@@ -7,6 +7,9 @@ use ::vmem::pagelist::PageListLink;
 
 pub const PAGE_SIZE: usize = 4096;
 
+pub const GUARD_PAGE: usize    = 0xffff_8100_0001_0000;
+pub const STACK_START: usize   = 0xffff_8100_0000_0000;
+
 pub use ::vmem::pagelist::PhysAddr;
 
 #[repr(align(4096))]

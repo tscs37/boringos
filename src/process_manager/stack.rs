@@ -49,8 +49,9 @@ impl Stack64K {
     use ::vmem::mapper::MapType;
     use ::vmem::PhysAddr;
     use ::alloc::vec::Vec;
-    let base = PhysAddr::new(0xffff_8100_0000_0000)
+    let base = PhysAddr::new(::vmem::STACK_START as u64)
     .expect("need base for stack map");
+    debug!("mapping 64K Stack to {}", base);
     let mut pages = Vec::new();
     pages.extend_from_slice(&self.pages);
     map(base, pages, MapType::Stack);
