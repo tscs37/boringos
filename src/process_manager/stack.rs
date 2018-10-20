@@ -45,18 +45,21 @@ impl Stack64K {
     }))
   }
   fn map(&mut self) {
-    use ::vmem::mapper::map;
-    use ::vmem::mapper::MapType;
+    use ::vmem::mapper::{map,MapType};
     use ::vmem::PhysAddr;
     use ::alloc::vec::Vec;
     let base = PhysAddr::new(::vmem::STACK_START as u64)
-    .expect("need base for stack map");
+      .expect("need base for stack map");
     debug!("mapping 64K Stack to {}", base);
     let mut pages = Vec::new();
     pages.extend_from_slice(&self.pages);
     map(base, pages, MapType::Stack);
   }
   fn unmap(&self) {
+    let base = PhysAddr::new(::vmem::STACK_START as u64)
+      .expect("need base for stack unmap");
+    use ::vmem::mapper::{unmap,MapType};
+    unmap(base, 16, MapType::Stack);
     panic!("not implemented")
   }
 }

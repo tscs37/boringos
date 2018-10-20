@@ -137,9 +137,10 @@ impl ActivePageTable {
         flags | EntryFlags::PRESENT);
     }
   pub fn map(&mut self, page: Page, flags: EntryFlags,
-    pm: &mut PageManager) {
+    pm: &mut PageManager) -> PhysAddr {
       let frame = unsafe { pm.alloc_page() }.expect("out of memory");
-      self.map_to(page, frame, flags, pm)
+      self.map_to(page, frame, flags, pm);
+      frame
     }
 
   pub fn identity_map(&mut self, page: Page, flags: EntryFlags,
@@ -149,7 +150,7 @@ impl ActivePageTable {
       self.map_to(page, frame, flags, pm)
     }
 
-  pub fn unmap(&mut self, page: Page, flags: EntryFlags,
+  pub fn unmap(&mut self, page: Page,
     pm: &mut PageManager) {
       let p1 = self.p4_mut()
         .next_table_mut(page.p4_index())
@@ -158,9 +159,11 @@ impl ActivePageTable {
         .expect("mapping code does not support huge pages");
       let frame = p1[page.p1_index()].real_addr().unwrap();
       p1[page.p1_index()].set_unused();
-      use x86_64::instructions::tlb;
-      use x86_64::VirtAddr;
-      tlb::flush(VirtAddr::new(page.start_address() as u64));
+      //use x86_64::instructions::tlb;
+      //use x86_64::VirtAddr;
+      //TODO: check if this is OK
+      unsafe { asm!{ "invlpg $0": "=r"(page.start_address())::: "intel", "volatile" } };
+      //tlb::flush(VirtAddr::new(page.start_address() as u64));
       unsafe { pm.free_page(frame) }
     }
 }
