@@ -23,6 +23,7 @@ extern crate spin;
 extern crate uart_16550;
 extern crate x86_64;
 extern crate slabmalloc;
+#[macro_use]
 extern crate alloc;
 
 #[macro_use]

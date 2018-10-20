@@ -158,6 +158,9 @@ impl ActivePageTable {
         .expect("mapping code does not support huge pages");
       let frame = p1[page.p1_index()].real_addr().unwrap();
       p1[page.p1_index()].set_unused();
+      use x86_64::instructions::tlb;
+      use x86_64::VirtAddr;
+      tlb::flush(VirtAddr::new(page.start_address() as u64));
       unsafe { pm.free_page(frame) }
     }
 }
@@ -203,6 +206,7 @@ bitflags! {
     const DIRTY =           1 << 6;
     const HUGE_PAGE =       1 << 7;
     const GLOBAL =          1 << 8;
+    const OS_EXTERNAL =     1 << 10;
     const NO_EXECUTE =      1 << 63;
   }
 }

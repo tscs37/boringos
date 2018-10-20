@@ -18,6 +18,7 @@ impl State {
     }
   }
   pub fn restore(&mut self) {
+    self.stack.map();
     panic!("todo: state restore")
   }
   pub fn save_and_clear(&mut self) {

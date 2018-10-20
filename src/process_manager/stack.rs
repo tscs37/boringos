@@ -16,16 +16,16 @@ impl Stack {
   pub fn new_64kstack() -> Stack {
     Stack::Stack64K(Stack64K::new())
   }
-  pub fn map(&self) {
+  pub fn map(&mut self) {
     match self {
       Stack::NoStack => (),
-      Stack::Stack64K(s) => (*s).borrow().map(),
+      Stack::Stack64K(s) => (*s).borrow_mut().map(),
     }
   }
-  pub fn unmap(&self) {
+  pub fn unmap(&mut self) {
     match self {
       Stack::NoStack => (),
-      Stack::Stack64K(s) => (*s).borrow().map(),
+      Stack::Stack64K(s) => (*s).borrow_mut().unmap(),
     }
   }
 }
@@ -44,6 +44,18 @@ impl Stack64K {
       pages: pages,
     }))
   }
-  fn map(&self) {}
-  fn unmap(&self) {}
+  fn map(&mut self) {
+    use ::vmem::mapper::map;
+    use ::vmem::mapper::MapType;
+    use ::vmem::PhysAddr;
+    use ::alloc::vec::Vec;
+    let base = PhysAddr::new(0xffff_8100_0000_0000)
+    .expect("need base for stack map");
+    let mut pages = Vec::new();
+    pages.extend_from_slice(&self.pages);
+    map(base, pages, MapType::Stack);
+  }
+  fn unmap(&self) {
+    panic!("not implemented")
+  }
 }
