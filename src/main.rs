@@ -141,7 +141,8 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
     //TODO: write penv
     vga_print_red!("[TODO]\n");
   }
-  vga_println!("Yielding to scheduler...");
+  
+  dump_stack_addr!();
   debug!("entering userspace");
 
   userspace().enter();

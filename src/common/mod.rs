@@ -24,6 +24,15 @@ pub fn release_page(pa: ::vmem::PhysAddr) {
   unsafe { ::PAGER.lock().free_page(pa) }
 }
 
+macro_rules! dump_stack_addr {
+  () => {
+    { let rsp: usize;
+      unsafe { asm!("" : "={rsp}"(rsp)); }
+      debug!("Stack at {:#018x}", rsp);
+    }
+  }
+}
+
 macro_rules! panic_on_drop {
   ($type_name:ident) => {
     impl Drop for $type_name {
