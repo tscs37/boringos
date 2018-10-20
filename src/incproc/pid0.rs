@@ -5,9 +5,9 @@ pub fn pid0() {
   dump_stack_addr!();
   let initramfs = include_bytes!("../../initramfs.bin");
   debug!("Loading {} byte long initramfs", initramfs.len());
-  debug!("Starting RNG Provider...");
+  debug!("Creating RNG Provider...");
   //TODO:
-  debug!("Registering Handle Numbering Provider...");
+  debug!("Creating Scheduler Task... ");
   //TODO:
   debug!("Starting Time Provider...");
   //TODO:
