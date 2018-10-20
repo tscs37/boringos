@@ -1,3 +1,4 @@
+use ::vmem::PageManager;
 use core::ops::{Index, IndexMut};
 use core::marker::PhantomData;
 use core::ptr::NonNull;
@@ -5,11 +6,13 @@ use ::vmem::PAGE_SIZE;
 use ::vmem::PhysAddr;
 
 const ENTRY_COUNT: usize = 512;
+const LO_ADDR_SPACE: usize = 0x0000_8000_0000_0000;
+const HI_ADDR_SPACE: usize = 0xffff_8000_0000_0000;
 const PAGE_ADDR_FILTER: u64 = 0x000fffff_fffff000;
 pub const P4: *mut Table<Level4> = 0xffffffff_fffff000 as *mut _;
 
-struct PagePhysAddr(usize);
-struct PageVirtAddr(usize);
+pub type PagePhysAddr = usize;
+pub type PageVirtAddr = usize;
 
 pub trait TableLevel {}
 pub trait HierarchicalLevel: TableLevel {
@@ -33,12 +36,131 @@ impl HierarchicalLevel for Level2 {
   type NextLevel = Level1;
 }
 
+pub struct ActivePageTable {
+  p4: NonNull<Table<Level4>>,
+}
+
 pub struct Page {
   number: usize,
 }
 
 pub struct Entry(u64);
 
+impl Page {
+  fn start_address(&self) -> usize {
+    self.number * PAGE_SIZE
+  }
+  pub fn containing_address(vaddr: PageVirtAddr) -> Page {
+    assert!(
+      vaddr < LO_ADDR_SPACE ||
+      vaddr > HI_ADDR_SPACE
+    );
+    Page { number: vaddr / PAGE_SIZE }
+  }
+  fn p4_index(&self) -> usize {
+    (self.number >> 27) & 0o777
+  }
+  fn p3_index(&self) -> usize {
+    (self.number >> 18) & 0o777
+  }
+  fn p2_index(&self) -> usize {
+    (self.number >> 9) & 0o777
+  }
+  fn p1_index(&self) -> usize {
+    (self.number >> 0) & 0o777
+  }
+}
+
+impl ActivePageTable {
+  pub unsafe fn new() -> ActivePageTable {
+    ActivePageTable {
+      p4: NonNull::new_unchecked(P4),
+    }
+  }
+  fn p4(&self) -> &Table<Level4> {
+    unsafe { self.p4.as_ref() }
+  }
+  fn p4_mut(&mut self) -> &mut Table<Level4> {
+    unsafe { self.p4.as_mut() }
+  }
+
+  pub fn translate(&self, vaddr: PageVirtAddr) -> Option<PagePhysAddr> {
+    let offset = vaddr % PAGE_SIZE;
+    self.translate_page(Page::containing_address(vaddr))
+      .map(|frame| 
+        frame.as_usize() * PAGE_SIZE + offset)
+  }
+
+  fn translate_page(&self, page: Page) -> Option<PhysAddr> {
+    let p3 = self.p4().next_table(page.p4_index());
+    let huge_page = || {
+      p3.and_then(|p3|{
+        let p3_entry = &p3[page.p3_index()];
+        if let Some(start_frame) = p3_entry.real_addr() {
+          if p3_entry.flags().contains(EntryFlags::HUGE_PAGE) {
+            // address 1GiB aligned
+            assert!(start_frame.as_usize() % (ENTRY_COUNT * ENTRY_COUNT) == 0);
+            return PhysAddr::new_usize(
+              start_frame.as_usize() + page.p2_index() * ENTRY_COUNT +
+                page.p1_index()
+            );
+          }
+        }
+        if let Some(p2) = p3.next_table(page.p3_index()) {
+          let p2_entry = &p2[page.p2_index()];
+          if let Some(start_frame) = p2_entry.real_addr() {
+            if p2_entry.flags().contains(EntryFlags::HUGE_PAGE) {
+              assert!(start_frame.as_usize() % ENTRY_COUNT == 0);
+              return PhysAddr::new_usize(
+                start_frame.as_usize() + page.p1_index()
+              );
+            }
+          }
+        }
+        None
+      })
+    };
+
+    p3.and_then(|p3| p3.next_table(page.p3_index()))
+      .and_then(|p2| p2.next_table(page.p2_index()))
+      .and_then(|p1| p1[page.p1_index()].real_addr())
+      .or_else(huge_page)
+  }
+
+  pub fn map_to(&mut self, page: Page, target: PhysAddr, flags: EntryFlags,
+    pm: &mut PageManager) {
+      let mut p3 = self.p4_mut().next_table_create(page.p4_index(), pm);
+      let mut p2 = p3.next_table_create(page.p3_index(), pm);
+      let mut p1 = p2.next_table_create(page.p2_index(), pm);
+      assert!(p1[page.p1_index()].is_unused());
+      p1[page.p1_index()].set_addr(target, 
+        flags | EntryFlags::PRESENT);
+    }
+  pub fn map(&mut self, page: Page, flags: EntryFlags,
+    pm: &mut PageManager) {
+      let frame = unsafe { pm.alloc_page() }.expect("out of memory");
+      self.map_to(page, frame, flags, pm)
+    }
+
+  pub fn identity_map(&mut self, page: Page, flags: EntryFlags,
+    pm: &mut PageManager) {
+      let frame = PhysAddr::new_usize(page.start_address())
+        .expect("cannot identity map 0x0");
+      self.map_to(page, frame, flags, pm)
+    }
+
+  pub fn unmap(&mut self, page: Page, flags: EntryFlags,
+    pm: &mut PageManager) {
+      let p1 = self.p4_mut()
+        .next_table_mut(page.p4_index())
+        .and_then(|p3| p3.next_table_mut(page.p3_index()))
+        .and_then(|p2| p2.next_table_mut(page.p2_index()))
+        .expect("mapping code does not support huge pages");
+      let frame = p1[page.p1_index()].real_addr().unwrap();
+      p1[page.p1_index()].set_unused();
+      unsafe { pm.free_page(frame) }
+    }
+}
 impl Entry {
   pub fn is_unused(&self) -> bool {
     self.0 == 0
@@ -117,6 +239,18 @@ impl<L> Table<L> where L: HierarchicalLevel {
     self.next_table_address(index)
       .map(|address| unsafe { &mut *(address as *mut _) })
   }
+  pub fn next_table_create(&mut self, index: usize, pm: &mut PageManager)
+    -> &mut Table<L::NextLevel>
+    {
+      if self.next_table(index).is_none() {
+        let frame = unsafe { pm.alloc_page() }
+          .expect("no free memory available");
+        self.entries[index].set_addr(frame, 
+          EntryFlags::PRESENT | EntryFlags::WRITABLE);
+        self.next_table_mut(index).unwrap().zero();
+      }
+      self.next_table_mut(index).unwrap()
+    }
 }
 
 impl<L> Index<usize> for Table<L> where L: TableLevel {

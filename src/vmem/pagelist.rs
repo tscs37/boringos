@@ -112,6 +112,9 @@ impl PhysAddr {
       None => None
     }
   }
+  pub fn new_usize(p: usize) -> Option<PhysAddr> {
+    PhysAddr::new(p as u64)
+  }
   pub fn from(nn: NonNull<u8>) -> PhysAddr {
     PhysAddr(nn)
   }
@@ -134,6 +137,9 @@ impl PhysAddr {
   }
   pub fn as_u64(&self) -> u64 {
     self.as_mut8() as u64
+  }
+  pub fn as_usize(&self) -> usize {
+    self.as_u64() as usize
   }
   pub fn as_mut8(&self) -> *mut u8 {
     self.0.as_ptr()
