@@ -101,3 +101,27 @@ pub fn print_red(args: fmt::Arguments) {
   w.write_fmt(args).unwrap();
   w.color_code = old_color;
 }
+
+macro_rules! vga_print_green {
+    ($($arg:tt)*) => {
+      $crate::bindriver::vga_buffer::print_green(format_args!($($arg)*))
+    };
+}
+
+macro_rules! vga_print_red {
+    ($($arg:tt)*) => {
+      $crate::bindriver::vga_buffer::print_red(format_args!($($arg)*))
+    };
+}
+
+macro_rules! vga_print {
+    ($($arg:tt)*) => {
+      $crate::bindriver::vga_buffer::print(format_args!($($arg)*))
+    };
+}
+
+macro_rules! vga_println {
+    () => (print!("\n"));
+    ($fmt:expr) => (vga_print!(concat!($fmt, "\n")));
+    ($fmt:expr, $($arg:tt)*) => (vga_print!(concat!($fmt, "\n"), $($arg)*));
+}

@@ -189,7 +189,7 @@ impl PageList {
     if pr.pages > self.count_empty() {
       panic!("attempted to insert range into too small empty PLE");
     }
-    //debug!("inserting {} pages into list, current={}", pr.pages, self.count_free());
+    trace!("inserting {} pages into list, current={}", pr.pages, self.count_free());
     for x in 0..pr.pages {
       for y in 0..PAGES_PER_BLOCK {
         if self.pages[y].is_none() {
@@ -199,7 +199,7 @@ impl PageList {
       }
     }
     self.update_lowhi();
-    //debug!("now have {} free pages", self.count_free());
+    trace!("now have {} free pages", self.count_free());
   }
   fn update_lowhi(&mut self) {
     for x in 0..PAGES_PER_BLOCK {
@@ -442,6 +442,7 @@ impl PageListLink {
     }
   }
   pub fn grab_free(&mut self) -> Option<PhysAddr> {
+    trace!("grabbing a free page from memory");
     match self {
       PageListLink::PageListEntry(pl) => {
         let pldr = unsafe { pl.as_mut() };
@@ -464,7 +465,7 @@ impl PageListLink {
       },
       None => {
         match self.get_start().convert_range(1) {
-          Ok(_) => (), //debug!("converted {} pages", pages),
+          Ok(pages) => trace!("converted {} pages", pages),
           Err(e) => panic!("conversion failed: {}", e),
         }
         match self.get_start().next_entry_with_free() {
@@ -489,17 +490,16 @@ impl PageListLink {
             PageListLink::None => {
               warn!("page {} not tracked, leaking it", p);
               return;
-              //self.get_start().append_range(p, 1);
             },
             PageListLink::PageListEntry(mut ple_ptr) => {
-              debug!("checking page list: {}", cur_o);
+              trace!("checking page list: {}", cur_o);
               let ple = unsafe { ple_ptr.as_mut() };
               if !(ple.highest < p || ple.lowest > p) {
                 for x in 0..PAGES_PER_BLOCK {
                   if let Some(ple_pa) = ple.pages[x] {
-                    debug!("check if page matches {}", ple_pa);
+                    trace!("check if page matches {}", ple_pa);
                     if ple_pa == p {
-                      debug!("found page, marking unused");
+                      trace!("found page, marking unused");
                       ple.used[x] = false;
                       return;
                     }
@@ -553,10 +553,10 @@ impl PageListLink {
                   match rref.sub_pages(needed) {
                     None => Err("rref refused to subdivide"),
                     Some(er) => {
-                      //debug!("inserting range {:?} into pref", er);
+                      trace!("inserting range {:?} into pref", er);
                       pref.insert_from_range(er);
                       if rref.pages == 0 {
-                        debug!("page range has no pages left, cleaning it up");
+                        trace!("page range has no pages left, cleaning it up");
                         let range_entry = PageListLink::PageRangeEntry(
                           unsafe{NonNull::new_unchecked(rref)});
                         let mut prev = range_entry.get_prev();

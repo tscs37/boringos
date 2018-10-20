@@ -1,6 +1,6 @@
 .PHONY: all clean kernel release rustup
 
-TARGET = x86_64-boringos
+TARGET = x86_64-boringoscore
 CRATE = boringos
 QEMU_MEMORY = 512
 QEMU_PLATFORM = system-x86_64

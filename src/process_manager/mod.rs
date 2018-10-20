@@ -86,28 +86,30 @@ impl Scheduler {
   // yield_stage2 will begin running the specified task handle
   pub unsafe fn yield_stage2(&self, th: Option<TaskHandle>) {
     match th {
-      None => self.yield_stage2(Some(self.scheduler_thandle)),
-      Some(th) => {
-        if let Some(task) = (*self.treg).borrow().resolve(&th) {
-          use self::task::Status;
-          let mut taskb = (*task).borrow_mut();
-          match taskb.status() {
-            Status::New => taskb.restore(),
-            Status::Running => panic!("TODO: implement running non-yield"),
-            Status::Runnable => panic!("TODO: implement runnable yield"),
-            Status::Blocked(_) => panic!("TODO: implement blockable task"),
-            Status::Stopped(_) => panic!("TODO: implement stopped task"),
-            Status::Shelled(_) => self.yield_stage2(None), // Cannot be run, re-yield to scheduler
-            Status::Destroyed => panic!("TODO: implement destroyed task"),
-            Status::IPCFunction => self.yield_stage2(None), // Cannot be run, re-yield to scheduler
-            Status::Stateless => panic!("TODO: implement stateless task"),
-          }
-        } else {
-          self.yield_stage2(Some(
-            TaskHandle::from(ProcessHandle::from(Handle::from(0)), Handle::from(0))))
-        }
-      }
+      None => self.yield_stage2_sched(self.scheduler_thandle),
+      Some(th) => self.yield_stage2_sched(th),
     }
     panic!("TODO: implement yield_stage2");
+  }
+  pub unsafe fn yield_stage2_sched(&self, th: TaskHandle) {
+    if let Some(task) = (*self.treg).borrow().resolve(&th) {
+      use self::task::Status;
+      let mut taskb = (*task).borrow_mut();
+      match taskb.status() {
+        Status::New => taskb.restore(),
+        _ => self.yield_stage2(None),
+        /*Status::Running => panic!("TODO: implement running non-yield"),
+        Status::Runnable => panic!("TODO: implement runnable yield"),
+        Status::Blocked(_) => panic!("TODO: implement blockable task"),
+        Status::Stopped(_) => panic!("TODO: implement stopped task"),
+        Status::Shelled(_) => self.yield_stage2(None), // Cannot be run, re-yield to scheduler
+        Status::Destroyed => panic!("TODO: implement destroyed task"),
+        Status::IPCFunction => self.yield_stage2(None), // Cannot be run, re-yield to scheduler
+        Status::Stateless => panic!("TODO: implement stateless task"),*/
+      }
+    } else {
+      self.yield_stage2(Some(
+        TaskHandle::from(ProcessHandle::from(Handle::from(0)), Handle::from(0))))
+    }
   }
 }

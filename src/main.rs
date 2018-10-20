@@ -15,6 +15,8 @@ extern crate lazy_static;
 extern crate static_assertions;
 #[macro_use]
 extern crate bitflags;
+#[macro_use]
+extern crate log;
 extern crate bootloader;
 extern crate volatile;
 extern crate spin;
@@ -40,7 +42,6 @@ use vmem::PageManager;
 use ::process_manager::Userspace;
 use ::core::cell::RefCell;
 use ::alloc::sync::Arc;
-use ::alloc::vec::Vec;
 
 pub use ::common::*;
 
@@ -57,14 +58,11 @@ static mut USERSPACE: Option<Arc<RefCell<Userspace>>> = None;
 
 #[no_mangle]
 pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> ! {
-  println!("BoringOS v{}\n", version::VERSION);
+  // init drivers for core hardware
+  bindriver::init();
+  vga_println!("BoringOS v{}\n", version::VERSION);
   {
-    print!("Initializing CPU...");
-    bindriver::cpu::idt::init_idt();
-    print_green!("[ OK ]\n");
-  }
-  {
-    print!("Initializing VMEM...");
+    vga_print!("Initializing VMEM...");
     debug!("Probing existing memory ...");
     debug!("P4CTA: {:#018x}\n", ::vmem::pagetable::P4 as u64);
     debug!("P4PTA: {:#018x}\n", boot_info.p4_table_addr);
@@ -112,10 +110,10 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
       let val = alloc::boxed::Box::new(5);
       debug!("VMEM Data: {}", val);
     }
-    print_green!("[ OK ]\n");
+    vga_print_green!("[ OK ]\n");
   }
   {
-    print!("Initializing Process Manager...");
+    vga_print!("Initializing Process Manager...");
     unsafe { USERSPACE = Some(Arc::new(RefCell::new(Userspace::new()))) }
     let us = userspace();
     {
@@ -128,20 +126,20 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
         ::incproc::pid0)
         {
           Err(_) => {
-            print_red!("[FAIL]");
+            vga_print_red!("[FAIL]");
             panic!("could not setup pid0")
           },
           Ok(_) => (),
         }
     }
-    print_green!("[ OK ]\n");
+    vga_print_green!("[ OK ]\n");
   }
   {
-    print!("Initializing Process Environment...");
+    vga_print!("Initializing Process Environment...");
     //TODO: write penv
-    print_red!("[TODO]\n");
+    vga_print_red!("[TODO]\n");
   }
-  println!("Yielding to scheduler...");
+  vga_println!("Yielding to scheduler...");
 
   userspace().enter();
 
@@ -152,7 +150,8 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
 use core::panic::PanicInfo;
 
 pub fn coredump() -> ! {
-  print_red!("\n\n===== CORE DUMPED =====\n");
+  error!("Kernel Core Dumped");
+  vga_print_red!("\n\n===== CORE DUMPED =====\n");
   loop {}
 }
 
@@ -160,8 +159,9 @@ pub fn coredump() -> ! {
 #[panic_handler]
 #[no_mangle]
 pub fn panic(info: &PanicInfo) -> ! {
-  print_red!("\n\n===== PANIC OCCURED IN KERNEL =====\n");
-  print_red!("{}\n", info);
+  error!("Panic occured: {}", info);
+  vga_print_red!("\n\n===== PANIC OCCURED IN KERNEL =====\n");
+  vga_print_red!("{}\n", info);
 
   loop {}
 }
@@ -169,9 +169,10 @@ pub fn panic(info: &PanicInfo) -> ! {
 #[alloc_error_handler]
 #[no_mangle]
 pub fn alloc_error(layout: core::alloc::Layout) -> ! {
-  print_red!("\n\n===== PANIC OCCURED IN KERNEL =====\n");
-  print_red!("\n\n===== MEMORY SUBSYSTEM ERROR  =====\n");
-  print_red!("Attempted to allocate {} bytes, vmem subsystem returned error\n", layout.size());
+  error!("Allocation Error: {} bytes", layout.size());
+  vga_print_red!("\n\n===== PANIC OCCURED IN KERNEL =====\n");
+  vga_print_red!("\n\n===== MEMORY SUBSYSTEM ERROR  =====\n");
+  vga_print_red!("Attempted to allocate {} bytes, vmem subsystem returned error\n", layout.size());
 
   loop{}
 }
