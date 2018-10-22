@@ -8,7 +8,7 @@ use ::vmem::PhysAddr;
 const ENTRY_COUNT: usize = 512;
 const LO_ADDR_SPACE: usize = 0x0000_8000_0000_0000;
 const HI_ADDR_SPACE: usize = 0xffff_8000_0000_0000;
-const PAGE_ADDR_FILTER: u64 = 0x000fffff_fffff000;
+pub const PAGE_ADDR_FILTER: u64 = 0x000fffff_fffff000;
 pub const P4: *mut Table<Level4> = 0xffffffff_fffff000 as *mut _;
 
 pub type PagePhysAddr = usize;
@@ -47,7 +47,7 @@ pub struct Page {
 pub struct Entry(u64);
 
 impl Page {
-  fn start_address(&self) -> usize {
+  pub fn start_address(&self) -> usize {
     self.number * PAGE_SIZE
   }
   pub fn containing_address(vaddr: PageVirtAddr) -> Page {
@@ -159,11 +159,10 @@ impl ActivePageTable {
         .expect("mapping code does not support huge pages");
       let frame = p1[page.p1_index()].real_addr().unwrap();
       p1[page.p1_index()].set_unused();
-      //use x86_64::instructions::tlb;
-      //use x86_64::VirtAddr;
-      //TODO: check if this is OK
-      unsafe { asm!{ "invlpg $0": "=r"(page.start_address())::: "intel", "volatile" } };
-      //tlb::flush(VirtAddr::new(page.start_address() as u64));
+      use x86_64::instructions::tlb;
+      use x86_64::VirtAddr;
+      //TODO: flush via invlpg
+      tlb::flush(VirtAddr::new(page.start_address() as u64));
       unsafe { pm.free_page(frame) }
     }
 }

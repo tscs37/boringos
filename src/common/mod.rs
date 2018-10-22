@@ -25,12 +25,15 @@ pub fn release_page(pa: ::vmem::PhysAddr) {
 }
 
 macro_rules! dump_stack_addr {
-  () => {
-    { let rsp: usize;
-      unsafe { asm!("" : "={rsp}"(rsp)); }
-      debug!("Stack at {:#018x}", rsp);
-    }
-  }
+  () => { debug!("Stack at {:#018x}", stack_addr!()) }
+}
+
+macro_rules! stack_addr {
+  () => { {
+      let rsp: usize;
+      unsafe { asm!("" : "={rsp}"(rsp)); };
+      rsp
+  } }
 }
 
 macro_rules! panic_on_drop {
@@ -41,4 +44,77 @@ macro_rules! panic_on_drop {
       }
     }
   }
+}
+
+macro_rules! proc_yield {
+  () => {
+    ::common::userspace().yield_to(None);
+  }
+}
+macro_rules! ipc_call {
+  ($fnc:ident, $data:expr) => {
+    panic!("function ")
+  }
+}
+
+macro_rules! ipc_return {
+  ($data:expr) => { {
+    let ipc_data = $data;
+    debug!("Returning value {:#018x}", ipc_data);
+    loop{}
+  } }
+}
+
+macro_rules! ipc_error {
+  ($code:expr) => { {
+    let ipc_err = $code;
+    debug!("Returning error {:#x}", ipc_err);
+    loop{}
+  } }
+}
+
+/*macro_rules! pivot_to_kernel_stack {
+  () => {
+    {
+      let old: usize = ::vmem::STACK_START; // start of kernel stack
+      let new: usize = ::vmem::KSTACK_START; // new stack
+      let old_rsp: usize;
+      unsafe { asm!("" : "={rsp}"(old_rsp) : : : "intel", "volatile") };
+      debug!("old: {:#018x}", old);
+      debug!("new: {:#018x}", new);
+      debug!("oldr:{:#018x}", old_rsp);
+      let offset_rsp = old - old_rsp;
+      debug!("ofsr:{:#018x}", offset_rsp);
+      let new_rsp = new - offset_rsp;
+      debug!("newr:{:#018x}", new_rsp);
+      unsafe {::core::ptr::copy_nonoverlapping(
+        old_rsp as *const u8,
+        new_rsp as *mut u8,
+        offset_rsp
+        )};
+      unsafe { asm!("" : : "{rsp}"(new_rsp) : : "intel", "volatile") };
+    }
+  }
+}*/
+
+macro_rules! pivot_to_kernel_stack {
+  () => {
+    let idx: u16 = 8; //::bindriver::cpu::gdt::SCHEDULER_IST_INDEX * 8;
+    debug!("TSS IDX: {:#02x}", idx);
+    dump_stack_addr!();
+    unsafe {
+      asm!(
+        "
+        ltr $0
+        "::"{ax}"(idx):"ax":"intel", "volatile"
+      )
+    };
+    dump_stack_addr!();
+  };
+}
+
+macro_rules! breakpoint {
+  () => {
+    ::x86_64::instructions::int3();
+  };
 }

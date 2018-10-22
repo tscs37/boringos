@@ -24,6 +24,7 @@ extern crate spin;
 extern crate uart_16550;
 extern crate x86_64;
 extern crate slabmalloc;
+extern crate raw_cpuid;
 #[macro_use]
 extern crate alloc;
 
@@ -60,6 +61,8 @@ static mut USERSPACE: Option<Arc<RefCell<Userspace>>> = None;
 
 #[no_mangle]
 pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> ! {
+  let rsp_enter: usize;
+  unsafe { asm!("":"={rsp}"(rsp_enter))};
   // init drivers for core hardware
   bindriver::init();
   vga_println!("BoringOS v{}\n", version::VERSION);
@@ -108,22 +111,18 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
         free_memory / 1024 / 1024,
         free_memory / 4096
       );
-      debug!("Testing VMEM...");
-      let val = alloc::boxed::Box::new(5);
-      debug!("VMEM Data: {}", val);
     }
     vga_print_green!("[ OK ]\n");
   }
+  breakpoint!();
   {
     vga_print!("Initializing Process Manager...");
     unsafe { USERSPACE = Some(Arc::new(RefCell::new(Userspace::new()))) }
     let us = userspace();
     {
-      use ::process_manager::{Handle, ProcessHandle};
       use ::alloc::string::String;
-      match us.scheduler().new_kproc(
-        &ProcessHandle::from(Handle::from(0)), 
-        &ProcessHandle::from(Handle::from(0)),
+      let mut sched_mut = us.scheduler_mut().expect("need scheduler to setup PID0");
+      match sched_mut.new_kproc(
         String::from("pid0"), 
         ::incproc::pid0)
         {
@@ -131,7 +130,10 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
             vga_print_red!("[FAIL]");
             panic!("could not setup pid0")
           },
-          Ok(_) => (),
+          Ok(sched) => {
+            sched_mut.register_scheduler(&sched);
+            debug!("Scheduler created with handle {}", sched);
+          },
         }
     }
     vga_print_green!("[ OK ]\n");

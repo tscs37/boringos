@@ -1,10 +1,12 @@
 use ::vmem::PhysAddr;
 use ::core::cell::RefCell;
 use ::alloc::rc::Rc;
+use ::alloc::vec::Vec;
 
 pub enum Stack {
   NoStack,
   Stack64K(Rc<RefCell<Stack64K>>),
+  KernelStack(Rc<RefCell<StackKernel>>),
 }
 
 panic_on_drop!(Stack);
@@ -16,16 +18,21 @@ impl Stack {
   pub fn new_64kstack() -> Stack {
     Stack::Stack64K(Stack64K::new())
   }
-  pub fn map(&mut self) {
+  pub fn new_kstack() -> Stack {
+    Stack::KernelStack(StackKernel::new())
+  }
+  pub fn map(&self) {
     match self {
       Stack::NoStack => (),
-      Stack::Stack64K(s) => (*s).borrow_mut().map(),
+      Stack::Stack64K(s) => (*s).borrow().map(),
+      Stack::KernelStack(s) => (*s).borrow().map(),
     }
   }
-  pub fn unmap(&mut self) {
+  pub fn unmap(&self) {
     match self {
       Stack::NoStack => (),
-      Stack::Stack64K(s) => (*s).borrow_mut().unmap(),
+      Stack::Stack64K(s) => (*s).borrow().unmap(),
+      Stack::KernelStack(s) => (*s).borrow().unmap(),
     }
   }
 }
@@ -44,7 +51,7 @@ impl Stack64K {
       pages: pages,
     }))
   }
-  fn map(&mut self) {
+  fn map(&self) {
     use ::vmem::mapper::{map,MapType};
     use ::vmem::PhysAddr;
     use ::alloc::vec::Vec;
@@ -61,5 +68,28 @@ impl Stack64K {
     use ::vmem::mapper::{unmap,MapType};
     unmap(base, 16, MapType::Stack);
     panic!("not implemented")
+  }
+}
+
+pub struct StackKernel {
+  pages: Vec<PhysAddr>,
+}
+
+impl StackKernel {
+  fn new() -> Rc<RefCell<StackKernel>> {
+    Rc::new(RefCell::new(StackKernel{
+      pages: vec!(),
+    }))
+  }
+  fn map(&self) {
+    use ::vmem::mapper::{map,MapType};
+    use ::vmem::PhysAddr;
+    let base = PhysAddr::new(::vmem::KSTACK_START as u64)
+      .expect("need base for kstack map");
+    debug!("mapping Kernel Stack to {}", base);
+    map(base, self.pages.clone(), MapType::Stack);
+  }
+  fn unmap(&self) {
+    panic!("kernel stack cannot be unmapped")
   }
 }

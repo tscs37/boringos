@@ -1,5 +1,5 @@
-pub mod helper;
 pub mod buffer;
+pub mod helper;
 
 pub struct Writer {
     pub column_position: usize,
@@ -36,27 +36,26 @@ impl Writer {
                 // not part of printable ASCII range
                 _ => self.write_byte(0xfe),
             }
-
         }
     }
     fn clear_row(&mut self, row: usize) {
-      let blank = buffer::ScreenChar{
-        ascii_character: b' ',
-        color_code: self.color_code,
-      };
-      for col in 0..buffer::BUFFER_WIDTH {
-        self.buffer.chars[row][col].write(blank);
-      }
+        let blank = buffer::ScreenChar {
+            ascii_character: b' ',
+            color_code: self.color_code,
+        };
+        for col in 0..buffer::BUFFER_WIDTH {
+            self.buffer.chars[row][col].write(blank);
+        }
     }
     fn new_line(&mut self) {
-      for row in 1..buffer::BUFFER_HEIGHT {
-        for col in 0..buffer::BUFFER_WIDTH {
-          let character = self.buffer.chars[row][col].read();
-          self.buffer.chars[row - 1][col].write(character);
+        for row in 1..buffer::BUFFER_HEIGHT {
+            for col in 0..buffer::BUFFER_WIDTH {
+                let character = self.buffer.chars[row][col].read();
+                self.buffer.chars[row - 1][col].write(character);
+            }
         }
-      }
-      self.clear_row(buffer::BUFFER_HEIGHT - 1);
-      self.column_position = 0;
+        self.clear_row(buffer::BUFFER_HEIGHT - 1);
+        self.column_position = 0;
     }
 }
 
@@ -72,34 +71,38 @@ impl fmt::Write for Writer {
 use spin::Mutex;
 
 lazy_static! {
-  pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer {
-      column_position: 0,
-      color_code: helper::ColorCode::new(helper::Color::LightGray, helper::Color::Black),
-      buffer: unsafe { &mut *(0xb8000 as *mut buffer::Buffer) },
-  });
+    pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer {
+        column_position: 0,
+        color_code: helper::ColorCode::new(helper::Color::LightGray, helper::Color::Black),
+        buffer: unsafe { &mut *(0xb8000 as *mut buffer::Buffer) },
+    });
 }
 
 pub fn print(args: fmt::Arguments) {
-  use core::fmt::Write;
-  WRITER.lock().write_fmt(args).unwrap();
+    use core::fmt::Write;
+    WRITER.lock().write_fmt(args).unwrap();
 }
 
 pub fn print_green(args: fmt::Arguments) {
-  use core::fmt::Write;
-  let mut w = WRITER.lock();
-  let old_color = w.color_code;
-  w.color_code = helper::ColorCode::new(helper::Color::Green, helper::Color::Black);
-  w.write_fmt(args).unwrap();
-  w.color_code = old_color;
+    use core::fmt::Write;
+    let mut w = WRITER.lock();
+    let old_color = w.color_code;
+    w.color_code = helper::ColorCode::new(helper::Color::Green, helper::Color::Black);
+    w.write_fmt(args).unwrap();
+    w.color_code = old_color;
 }
 
 pub fn print_red(args: fmt::Arguments) {
-  use core::fmt::Write;
-  let mut w = WRITER.lock();
-  let old_color = w.color_code;
-  w.color_code = helper::ColorCode::new(helper::Color::Red, helper::Color::Black);
-  w.write_fmt(args).unwrap();
-  w.color_code = old_color;
+    use core::fmt::Write;
+    unsafe { WRITER.force_unlock() };
+    let mut w = WRITER.try_lock();
+    w.and_then(|mut w| {
+        let old_color = w.color_code;
+        w.color_code = helper::ColorCode::new(helper::Color::Red, helper::Color::Black);
+        w.write_fmt(args).unwrap();
+        w.color_code = old_color;
+        Some(w)
+    }).expect("need to print to vga");
 }
 
 macro_rules! vga_print_green {

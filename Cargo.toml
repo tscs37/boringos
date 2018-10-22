@@ -12,6 +12,7 @@ x86_64 = "0.2.8"
 slabmalloc = "0.3.0"
 static_assertions = "0.2.5"
 bitflags = "1.0.4"
+raw-cpuid = "6.0.0"
 
 [dependencies.lazy_static]
 version = "1.0"

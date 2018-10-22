@@ -14,6 +14,20 @@ pub enum MapType {
   Guard, // No Execute, No Read+Write
 }
 
+pub fn map_new(base_addr: PhysAddr, mt:MapType) {
+  let mut apt = unsafe { ActivePageTable::new() };
+  let pm = &mut ::PAGER.lock();
+  let flags = match mt {
+    MapType::Stack => EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
+    MapType::Data => EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
+    MapType::Code => EntryFlags::PRESENT,
+    MapType::Managed(_) => EntryFlags::OS_EXTERNAL,
+    MapType::ShMem(_) => EntryFlags::OS_EXTERNAL,
+    MapType::Guard => EntryFlags::NO_EXECUTE,
+  };
+  apt.map(Page::containing_address(base_addr.as_usize()), flags, pm);
+}
+
 pub fn map(base_addr: PhysAddr, pl: Vec<PhysAddr>, mt: MapType) {
   let mut apt = unsafe { ActivePageTable::new() };
   let pm = &mut ::PAGER.lock();

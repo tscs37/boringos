@@ -18,6 +18,31 @@ impl State {
     }
   }
   pub fn restore(&mut self) {
+    debug!("mapping stack");
+    self.stack.map();
+    debug!("restoring stack and returning");
+    unsafe { asm!(
+      "
+      pop r15
+      pop r14
+      pop r13
+      pop r12
+      pop r11
+      pop r10
+      pop r9
+      pop r8
+      pop rbp
+      pop rdi
+      pop rsi
+      pop rdx
+      pop rcx
+      pop rbx
+      pop rax
+      ret
+      "
+    )};
+  }
+  pub fn restore_new(&mut self) {
     debug!("mapping stack of new process");
     self.stack.map();
     debug!("loading RIP and RSP");
@@ -31,30 +56,9 @@ impl State {
        : : "{rsp}"(self.rsp), "r"(rip) : 
        "rsp") }
   }
-  #[inline(never)]
-  #[naked]
-  pub fn save_and_clear(&mut self) {
-    unsafe { asm!(
-      "
-      push rax
-      push rbx
-      push rcx
-      push rdx
-      push rsi
-      push rdi
-      push r8
-      push r9
-      push r10
-      push r11
-      push r12
-      push r13
-      push r14
-      push r15
-      push rflags
-      "
-      :"={rsp}"(self.rsp)::: "intel", "volatile"
-    )};
+  pub fn save_and_clear(&mut self, rsp: usize) {
     self.stack.unmap();
+    self.rsp = rsp;
     panic!("todo: state save_and_clear")
   }
 }

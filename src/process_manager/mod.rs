@@ -4,6 +4,15 @@ mod state;
 mod stack;
 mod handles;
 
+use ::alloc::rc::Rc;
+use ::alloc::sync::Arc;
+use ::core::cell::{RefCell, RefMut, BorrowError, BorrowMutError, Ref};
+pub use ::process_manager::handles::{ProcessHandle, TaskHandle, Handle};
+pub use ::process_manager::process::Process;
+pub use ::process_manager::task::Task;
+use ::process_manager::handles::{ProcessHandleRegistry, TaskHandleRegistry};
+use ::process_manager::stack::Stack;
+
 #[derive(Clone)]
 pub struct Userspace {
   scheduler: Arc<RefCell<Scheduler>>,
@@ -15,25 +24,31 @@ impl Userspace {
       scheduler: Arc::new(RefCell::new(Scheduler::new())),
     }
   }
-  pub fn scheduler<'a>(&self) -> RefMut<'_, Scheduler> {
-    (*self.scheduler).borrow_mut()
+  pub fn scheduler<'a>(&self) -> Result<Ref<'_, Scheduler>, BorrowError> {
+    (*self.scheduler).try_borrow()
   }
-  pub fn enter(&self) {
+  pub fn scheduler_mut<'a>(&self) -> Result<RefMut<'_, Scheduler>, BorrowMutError> {
+    (*self.scheduler).try_borrow_mut()
+  }
+  pub fn enter(&self) -> ! {
     debug!("going for yield_stage2, direct entry into PID0");
-    unsafe { self.scheduler().yield_stage2(None); }
+    match self.scheduler() {
+      Ok(s) => unsafe { 
+        debug!("mapping new kernel stack");
+        (*s.kernel_stack).borrow().map();
+        s.yield_stage2(None)
+      },
+      Err(p) => panic!("{}", p),
+    }
   }
   pub fn yield_to(&self, th: Option<TaskHandle>) {
-    self.scheduler().yield_to(th);
+    match self.scheduler() {
+      Ok(s) => s.yield_to(th),
+      Err(p) => panic!("{}", p),
+    }
   }
 }
 
-use ::alloc::rc::Rc;
-use ::alloc::sync::Arc;
-use ::core::cell::{RefCell, RefMut};
-pub use ::process_manager::handles::{ProcessHandle, TaskHandle, Handle};
-pub use ::process_manager::process::Process;
-pub use ::process_manager::task::Task;
-use ::process_manager::handles::{ProcessHandleRegistry, TaskHandleRegistry};
 
 
 #[derive(Clone)]
@@ -42,35 +57,45 @@ pub struct Scheduler {
   treg: Arc<RefCell<TaskHandleRegistry>>,
   scheduler_thandle: TaskHandle,
   pid_provider_thandle: TaskHandle,
+  current_task: TaskHandle, //TODO: change for multi-CPU
+  kernel_stack: Arc<RefCell<Stack>>, //TODO: handle multiple kernel stacks
 }
 
 use ::alloc::string::String;
 
 impl Scheduler {
   pub fn new() -> Scheduler {
+    let null = TaskHandle::from(ProcessHandle::from(Handle::from(0)), Handle::from(0));
     Scheduler {
       treg: Arc::new(RefCell::new(TaskHandleRegistry::new())),
       preg: Arc::new(RefCell::new(ProcessHandleRegistry::new())),
-      scheduler_thandle: TaskHandle::from(ProcessHandle::from(Handle::from(0)), Handle::from(0)),
-      pid_provider_thandle: TaskHandle::from(ProcessHandle::from(Handle::from(0)), Handle::from(0)),
+      scheduler_thandle: null,
+      pid_provider_thandle: null,
+      current_task: null,
+      kernel_stack: Arc::new(RefCell::new(Stack::new_kstack())),
     }
   }
   pub fn register_process(&mut self, ph: &ProcessHandle, p: Rc<RefCell<Process>>) {
     self.insert_preg(ph, p);
   }
+  pub fn register_scheduler(&mut self, th: &TaskHandle) {
+    self.scheduler_thandle = *th;
+  }
   pub fn new_kproc(&mut self, 
-    ph: &ProcessHandle, parent: &ProcessHandle, 
-    name: String, f: fn()) -> Result<(), ()> {
+    name: String, f: fn()) -> Result<TaskHandle, ()> {
+      let ph = &ProcessHandle::gen();
       info!("registering kernel process '{}' ({})", name, ph);
-      let mut p = Process::new(name, parent);
+      let mut p = Process::new(name, ph);
       let t = Task::new_ktask_for_fn(f);
       // First Task is task 0 for a KProc
-      let th = &TaskHandle::from(*ph, Handle::from(0));
-      p.add_task(th);
+      let h =Handle::gen();
+      debug!("new task with handle {}", h);
+      let th = TaskHandle::from(*ph, h);
+      p.add_task(&th);
       self.insert_preg(ph, Rc::new(RefCell::new(p)));
-      self.insert_treg(th, Rc::new(RefCell::new(t)));
+      self.insert_treg(&th, Rc::new(RefCell::new(t)));
 
-      Ok(())
+      Ok(th)
   }
   fn insert_treg(&self, th: &TaskHandle, t: Rc<RefCell<Task>>) {
     (*self.treg).borrow_mut().insert(th, t)
@@ -81,37 +106,89 @@ impl Scheduler {
   // yield_to will save the current process and task context and then
   // call yield_stage2 with the given process handle
   // this function will be called by the scheduler
+  #[naked]
+  #[inline(never)]
   pub fn yield_to(&self, th: Option<TaskHandle>) {
-    //TODO: save all registers, pivot to kernel stack
-    panic!("TODO: implement yield_to");
+    unsafe { asm!(
+      "
+      push rax
+      push rbx
+      push rcx
+      push rdx
+      push rsi
+      push rdi
+      push rbp
+      push r8
+      push r9
+      push r10
+      push r11
+      push r12
+      push r13
+      push r14
+      push r15
+      " :::: "intel", "volatile"
+    )};
+    let rsp: usize;
+    unsafe {asm!(
+      "" : "={rsp}"(rsp)::: "intel", "volatile"
+    )};
+    debug!("switching to kernel stack");
+    pivot_to_kernel_stack!();
+    debug!("entering scheduler safe code");
+
+    let treg = (*self.treg).borrow();
+    {
+      debug!("clearing out current task {}", self.current_task);
+      let task = treg.resolve(&self.current_task);
+      match task {
+        None => panic!("current task undefined in scheduler"),
+        Some(task) => (*task).borrow_mut().save_and_clear(rsp),
+      };
+      debug!("task updating, yielding to scheduler");
+    }
+    unsafe { self.yield_stage2(None) };
   }
   // yield_stage2 will begin running the specified task handle
-  pub unsafe fn yield_stage2(&self, th: Option<TaskHandle>) {
+  pub unsafe fn yield_stage2(&self, th: Option<TaskHandle>) -> ! {
+    debug!("entering scheduler stage 2");
     match th {
-      None => self.yield_stage2_sched(self.scheduler_thandle),
-      Some(th) => self.yield_stage2_sched(th),
+      None => {
+        let sched = self.scheduler_thandle;
+        self.yield_stage2_sched_internal(sched);
+      }
+      Some(th) => { 
+        debug!("updating current task to {}", th);
+        let us = ::userspace();
+        {
+          match us.scheduler_mut() {
+            Err(_) => panic!("need scheduler mutably for updating current task"),
+            Ok(ref mut s) => { s.current_task = th },
+          }
+        }
+        self.yield_stage2_sched_internal(th)
+      },
     }
     panic!("TODO: implement yield_stage2");
   }
-  pub unsafe fn yield_stage2_sched(&self, th: TaskHandle) {
+  pub unsafe fn yield_stage2_sched(self, th: TaskHandle) -> ! {
+      self.yield_stage2_sched_internal(th);
+  }
+  unsafe fn yield_stage2_sched_internal(&self, th: TaskHandle) -> ! {
+    debug!("entering scheduler stage 2 final for {}", th);
     if let Some(task) = (*self.treg).borrow().resolve(&th) {
       use self::task::Status;
       let mut taskb = (*task).borrow_mut();
       match taskb.status() {
-        Status::New => taskb.restore(),
-        _ => self.yield_stage2(None),
-        /*Status::Running => panic!("TODO: implement running non-yield"),
-        Status::Runnable => panic!("TODO: implement runnable yield"),
-        Status::Blocked(_) => panic!("TODO: implement blockable task"),
-        Status::Stopped(_) => panic!("TODO: implement stopped task"),
-        Status::Shelled(_) => self.yield_stage2(None), // Cannot be run, re-yield to scheduler
-        Status::Destroyed => panic!("TODO: implement destroyed task"),
-        Status::IPCFunction => self.yield_stage2(None), // Cannot be run, re-yield to scheduler
-        Status::Stateless => panic!("TODO: implement stateless task"),*/
-      }
+        Status::New => taskb.restore_new(),
+        _ => panic!("TODO: implement returning from new tasks"),
+      };
+      panic!("scheduler returned from restore");
     } else {
-      self.yield_stage2(Some(
-        TaskHandle::from(ProcessHandle::from(Handle::from(0)), Handle::from(0))))
+      if th.into().into() == 0 && th.process_handle().into().into() == 0 {
+        let sched = self.scheduler_thandle;
+        self.yield_stage2_sched_internal(sched);
+      }
+      panic!("tried to yield to non-existant task handle {}", th);
     }
   }
 }

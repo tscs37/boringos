@@ -8,5 +8,6 @@ pub mod cpu;
 pub fn init() {
   ::bindriver::serial::init();
   debug!("setting up CPU IDT");
+  ::bindriver::cpu::gdt::init();
   ::bindriver::cpu::idt::init_idt();
 }

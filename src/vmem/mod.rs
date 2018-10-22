@@ -9,8 +9,13 @@ pub const PAGE_SIZE: usize = 4096;
 
 pub const GUARD_PAGE: usize    = 0xffff_8100_0001_0000;
 pub const STACK_START: usize   = 0xffff_8100_0000_0000;
+pub const KSTACK_END: usize    = 0xffff_8000_0000_0000;
+pub const KSTACK_START: usize  = 0xffff_8000_fffe_0000;
+pub const KSTACK_GUARD: usize  = 0xffff_8000_ffff_0000;
+pub const BOOT_KSTACK: usize   = 0x0000_57AC_0000_0000;
 
 pub use ::vmem::pagelist::PhysAddr;
+pub use ::vmem::pagetable::PAGE_ADDR_FILTER;
 
 #[repr(align(4096))]
 #[derive(Copy, Clone)]

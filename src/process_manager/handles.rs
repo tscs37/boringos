@@ -15,11 +15,35 @@ impl Handle {
   pub const fn from(x: u64) -> Handle {
     Handle(x)
   }
+  pub fn gen() -> Handle {
+    if !::bindriver::cpu::has_rdrand() {
+      panic!("BoringOS requires a CPU with RDRAND Support");
+    }
+    let rnd: u64;
+    let retry: u32;
+    unsafe{
+      asm!(
+        "
+        mov ecx, 100
+        retry_handle_gen:
+          rdrand rax
+          jnc .done_handle_gen
+          cmp ecx, 0
+          jz .done_handle_gen
+          loop retry_handle_gen
+        .done_handle_gen:
+        ":
+        "={rax}"(rnd), "={ecx}"(retry)::"rax", "ecx":"intel", "volatile"
+      );
+    }
+    if retry < 0 { panic!("could not get random number")}
+    Handle(rnd)
+  }
 }
 
 impl ::core::fmt::Display for Handle {
     fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-      f.write_fmt(format_args!("{}", self.0))
+      f.write_fmt(format_args!("{:016x}", self.0))
   }
 }
 
@@ -51,6 +75,9 @@ impl ProcessHandle {
   }
   pub const fn from(x: Handle) -> Self {
     ProcessHandle(x)
+  }
+  pub fn gen() -> ProcessHandle {
+    ProcessHandle(Handle::gen())
   }
 }
 
@@ -89,6 +116,9 @@ impl TaskHandle {
   }
   pub const fn from(p: ProcessHandle, x: Handle) -> Self {
     TaskHandle(x, p)
+  }
+  pub fn gen(p: ProcessHandle) -> TaskHandle {
+    TaskHandle(Handle::gen(), p)
   }
 }
 

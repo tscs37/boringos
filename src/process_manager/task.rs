@@ -27,9 +27,13 @@ impl Task {
     self.status = Status::Running;
     self.state.restore()
   }
-  pub fn save_and_clear(&mut self) {
+  pub fn restore_new(&mut self) {
+    self.status = Status::Running;
+    self.state.restore_new();
+  }
+  pub fn save_and_clear(&mut self, rsp: usize) {
     self.status = Status::Runnable;
-    self.state.save_and_clear()
+    self.state.save_and_clear(rsp)
   }
 }
 
