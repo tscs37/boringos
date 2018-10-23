@@ -115,6 +115,32 @@ impl Scheduler {
   }
   pub fn resolve_ph(&self, ph: &ProcessHandle) -> Option<Rc<RefCell<Process>>> {
     (*self.preg).borrow().resolve(ph).and_then(|x| Some(x.clone()))
+  // yield_to will save the current process and task context and then
+  // call yield_stage2 with the given process handle
+  // this function will be called by the scheduler
+  #[naked]
+  #[inline(never)]
+  pub fn yield_to(&self, th: Option<TaskHandle>) {
+    push_regs!();
+    let rsp: usize;
+    unsafe {asm!(
+      "" : "={rsp}"(rsp)::: "intel", "volatile"
+    )};
+    debug!("switching to kernel stack");
+    pivot_to_kernel_stack!();
+    debug!("entering scheduler safe code");
+
+    let treg = (*self.treg).borrow();
+    {
+      debug!("clearing out current task {}", self.current_task);
+      let task = treg.resolve(&self.current_task);
+      match task {
+        None => panic!("current task undefined in scheduler"),
+        Some(task) => (*task).borrow_mut().save_and_clear(rsp),
+      };
+      debug!("task updating, yielding to scheduler");
+    }
+    unsafe { self.yield_stage2(None) };
   }
   // yield_stage2 will begin running the specified task handle
   pub unsafe fn yield_stage2(&self, th: Option<TaskHandle>) -> ! {
