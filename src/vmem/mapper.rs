@@ -16,7 +16,7 @@ pub enum MapType {
 
 pub fn map_new(base_addr: PhysAddr, mt:MapType) {
   let mut apt = unsafe { ActivePageTable::new() };
-  let pm = &mut ::PAGER.lock();
+  let pm = &mut ::pager();
   let flags = match mt {
     MapType::Stack => EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
     MapType::Data => EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
@@ -30,7 +30,7 @@ pub fn map_new(base_addr: PhysAddr, mt:MapType) {
 
 pub fn map(base_addr: PhysAddr, pl: Vec<PhysAddr>, mt: MapType) {
   let mut apt = unsafe { ActivePageTable::new() };
-  let pm = &mut ::PAGER.lock();
+  let pm = &mut ::pager();
   let flags = match mt {
     MapType::Stack => EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
     MapType::Data => EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
@@ -47,9 +47,9 @@ pub fn map(base_addr: PhysAddr, pl: Vec<PhysAddr>, mt: MapType) {
     _ => (),
     Stack => {
       let guard_addr = unsafe { PhysAddr::new_unchecked(
-        base_addr.as_u64() + PAGE_SIZE as u64) };
+        base_addr.as_u64() + 2 * PAGE_SIZE as u64) };
       let guard_addr_op = unsafe { PhysAddr::new_unchecked(
-        base_addr.as_u64() - ((pl.len() + 1) * PAGE_SIZE) as u64)
+        base_addr.as_u64() - ((pl.len() + 2) * PAGE_SIZE) as u64)
       };
       let guard_map = unsafe { vec!(PhysAddr::new_unchecked(::vmem::GUARD_PAGE as u64)) };
       trace!("map stackunderflow guard page");
@@ -62,7 +62,7 @@ pub fn map(base_addr: PhysAddr, pl: Vec<PhysAddr>, mt: MapType) {
 
 pub fn unmap(base_addr: PhysAddr, pl_size: usize, mt: MapType) {
   let mut apt = unsafe { ActivePageTable::new() };
-  let pm = &mut ::PAGER.lock();
+  let pm = &mut ::pager();
   for x in 0..pl_size {
     let addr = base_addr.as_usize() - x * PAGE_SIZE;
     apt.unmap(Page::containing_address(addr), pm);

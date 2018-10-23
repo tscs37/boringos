@@ -10,9 +10,8 @@ macro_rules! busy_intr_handler {
     ($name:ident) => {
         extern "x86-interrupt" fn $name(stack_frame: &mut ExceptionStackFrame) {
             crack_locks();
-            debug!("Intterupt occured");
             debug!("Interrupt {}:\n{:?}", stringify!($name), stack_frame);
-            loop{}
+            hlt_cpu!();
         }
     };
 }
@@ -21,9 +20,8 @@ macro_rules! busy_intr_handle_errcode {
     ($name:ident) => {
         extern "x86-interrupt" fn $name(stack_frame: &mut ExceptionStackFrame, err: u64) {
             crack_locks();
-            debug!("Intterupt occured");
             debug!("Interrupt {} ({:#018x}):\n{:?}", stringify!($name), err, stack_frame);
-            loop{}
+            hlt_cpu!();
         }
     };
 }
@@ -86,43 +84,46 @@ extern "x86-interrupt" fn double_fault(stack_frame: &mut ExceptionStackFrame, er
     error!("Error: {:x}", error_code);
     vga_println!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
     vga_println!("\n\nBUSY LOOPING CORE");
-    loop {}
+    hlt_cpu!();
 }
 
 extern "x86-interrupt" fn page_fault(
     stack_frame: &mut ExceptionStackFrame,
     error_code: PageFaultErrorCode,
 ) {
+    crack_locks();
+    debug!("Page Fault occured, handling in kernel");
     let addr: usize;
     unsafe { asm!("mov rax, cr2":"={eax}"(addr)::"eax":"intel", "volatile") };
     use vmem::pagetable::Page;
-    use vmem::{mapper::map_new, mapper::MapType, PhysAddr};
-    crack_locks();
+    use vmem::{mapper::map_new, mapper::MapType, PhysAddr, PAGE_SIZE};
     let page = Page::containing_address(addr);
     let paddr = unsafe { PhysAddr::new_unchecked(page.start_address() as u64) };
-    if !error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION) {
-        if page.start_address() >= ::vmem::KSTACK_END
-            && page.start_address() <= ::vmem::KSTACK_START
+    let is_kstack = page.start_address() >= ::vmem::KSTACK_END - PAGE_SIZE
+            && page.start_address() <= ::vmem::KSTACK_START + PAGE_SIZE;
+    let prot_violation = error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION);
+    if !prot_violation {
+        if is_kstack
         {
             debug!("mapping kstack page to {:#018x}", page.start_address());
             map_new(paddr, MapType::Stack);
+            debug!("mapped, returning...");
             return;
         } else if page.start_address() == ::vmem::KSTACK_GUARD {
             panic!("stack in kernel stack guard");
-        } else if page.start_address() >= 0x000057ac00200000
-            && page.start_address() <= 0x000057ac002ff000
-        {
-            map_new(paddr, MapType::Stack);
         } else {
             panic!("cannot map userspace yet: {:#018x}", page.start_address());
         }
     } else {
         debug!(
-            "pagefault occured: {:#018x} => {:?} \n\n {:?}",
+            "uncovered pagefault occured: {:#018x} => {:?} \n\n {:?}",
             page.start_address(),
             error_code,
             stack_frame
         );
+        if is_kstack {
+            panic!("prot violation in kernel");
+        }
         panic!("pagefault todo:");
     }
 }

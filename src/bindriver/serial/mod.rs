@@ -14,14 +14,15 @@ lazy_static! {
 
 pub fn init() {
     ::log::set_logger(&SERIAL1).expect("could not setup logging");
-    ::log::set_max_level(LevelFilter::Debug);
+    ::log::set_max_level(LevelFilter::Trace);
 }
 
 impl ::log::Log for SERIAL1 {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Trace && !(
+        metadata.level() <= Level::Trace && !(false
             // put in blacklisted debug modules here
-            metadata.target() == "slabmalloc"
+            || metadata.target() == "slabmalloc"
+            || metadata.target() == "boringos::vmem::pagelist"
         )
     }
 

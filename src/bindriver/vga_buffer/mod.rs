@@ -95,7 +95,7 @@ pub fn print_green(args: fmt::Arguments) {
 pub fn print_red(args: fmt::Arguments) {
     use core::fmt::Write;
     unsafe { WRITER.force_unlock() };
-    let mut w = WRITER.try_lock();
+    let w = WRITER.try_lock();
     w.and_then(|mut w| {
         let old_color = w.color_code;
         w.color_code = helper::ColorCode::new(helper::Color::Red, helper::Color::Black);

@@ -42,9 +42,12 @@ impl Userspace {
     }
   }
   pub fn yield_to(&self, th: Option<TaskHandle>) {
-    match self.scheduler() {
-      Ok(s) => s.yield_to(th),
-      Err(p) => panic!("{}", p),
+    match th {
+      None => ::common::yield_to(0,0),
+      Some(th) => ::common::yield_to(
+        th.into().into() as usize, 
+        th.process_handle().into().into() as usize
+      ),
     }
   }
 }
@@ -63,6 +66,7 @@ pub struct Scheduler {
 
 use ::alloc::string::String;
 
+
 impl Scheduler {
   pub fn new() -> Scheduler {
     let null = TaskHandle::from(ProcessHandle::from(Handle::from(0)), Handle::from(0));
@@ -74,6 +78,9 @@ impl Scheduler {
       current_task: null,
       kernel_stack: Arc::new(RefCell::new(Stack::new_kstack())),
     }
+  }
+  pub fn current_task(&self) -> TaskHandle {
+    self.current_task
   }
   pub fn register_process(&mut self, ph: &ProcessHandle, p: Rc<RefCell<Process>>) {
     self.insert_preg(ph, p);
@@ -103,50 +110,11 @@ impl Scheduler {
   fn insert_preg(&self, ph: &ProcessHandle, p: Rc<RefCell<Process>>) {
     (*self.preg).borrow_mut().insert(ph, p)
   }
-  // yield_to will save the current process and task context and then
-  // call yield_stage2 with the given process handle
-  // this function will be called by the scheduler
-  #[naked]
-  #[inline(never)]
-  pub fn yield_to(&self, th: Option<TaskHandle>) {
-    unsafe { asm!(
-      "
-      push rax
-      push rbx
-      push rcx
-      push rdx
-      push rsi
-      push rdi
-      push rbp
-      push r8
-      push r9
-      push r10
-      push r11
-      push r12
-      push r13
-      push r14
-      push r15
-      " :::: "intel", "volatile"
-    )};
-    let rsp: usize;
-    unsafe {asm!(
-      "" : "={rsp}"(rsp)::: "intel", "volatile"
-    )};
-    debug!("switching to kernel stack");
-    pivot_to_kernel_stack!();
-    debug!("entering scheduler safe code");
-
-    let treg = (*self.treg).borrow();
-    {
-      debug!("clearing out current task {}", self.current_task);
-      let task = treg.resolve(&self.current_task);
-      match task {
-        None => panic!("current task undefined in scheduler"),
-        Some(task) => (*task).borrow_mut().save_and_clear(rsp),
-      };
-      debug!("task updating, yielding to scheduler");
-    }
-    unsafe { self.yield_stage2(None) };
+  pub fn resolve_th(&self, th: &TaskHandle) -> Option<Rc<RefCell<Task>>> {
+    (*self.treg).borrow().resolve(th).and_then(|x| Some(x.clone()))
+  }
+  pub fn resolve_ph(&self, ph: &ProcessHandle) -> Option<Rc<RefCell<Process>>> {
+    (*self.preg).borrow().resolve(ph).and_then(|x| Some(x.clone()))
   }
   // yield_stage2 will begin running the specified task handle
   pub unsafe fn yield_stage2(&self, th: Option<TaskHandle>) -> ! {
@@ -168,7 +136,6 @@ impl Scheduler {
         self.yield_stage2_sched_internal(th)
       },
     }
-    panic!("TODO: implement yield_stage2");
   }
   pub unsafe fn yield_stage2_sched(self, th: TaskHandle) -> ! {
       self.yield_stage2_sched_internal(th);
@@ -182,7 +149,6 @@ impl Scheduler {
         Status::New => taskb.restore_new(),
         _ => panic!("TODO: implement returning from new tasks"),
       };
-      panic!("scheduler returned from restore");
     } else {
       if th.into().into() == 0 && th.process_handle().into().into() == 0 {
         let sched = self.scheduler_thandle;

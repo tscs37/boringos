@@ -129,16 +129,18 @@ impl ActivePageTable {
 
   pub fn map_to(&mut self, page: Page, target: PhysAddr, flags: EntryFlags,
     pm: &mut PageManager) {
-      let mut p3 = self.p4_mut().next_table_create(page.p4_index(), pm);
-      let mut p2 = p3.next_table_create(page.p3_index(), pm);
-      let mut p1 = p2.next_table_create(page.p2_index(), pm);
+      let p3 = self.p4_mut().next_table_create(page.p4_index(), pm);
+      let p2 = p3.next_table_create(page.p3_index(), pm);
+      let p1 = p2.next_table_create(page.p2_index(), pm);
       assert!(p1[page.p1_index()].is_unused());
       p1[page.p1_index()].set_addr(target, 
         flags | EntryFlags::PRESENT);
     }
   pub fn map(&mut self, page: Page, flags: EntryFlags,
     pm: &mut PageManager) -> PhysAddr {
+      debug!("mapping!");
       let frame = unsafe { pm.alloc_page() }.expect("out of memory");
+      debug!("mapping!");
       self.map_to(page, frame, flags, pm);
       frame
     }

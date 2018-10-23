@@ -29,7 +29,7 @@ bootimage: kernel
 	bootimage build --target $(TARGET).json
 
 kernel: 
-	cargo xbuild --target $(TARGET).json
+	#cargo xbuild --target $(TARGET).json
 
 qemu: bootimage
 	qemu-$(QEMU_PLATFORM) $(QEMU_OPTIONS) || exit 0

@@ -48,7 +48,7 @@ use ::alloc::sync::Arc;
 
 pub use ::common::*;
 
-static PAGER: Mutex<PageManager> = Mutex::new(PageManager {
+pub static PAGER: Mutex<PageManager> = Mutex::new(PageManager {
   first_page_mem: ::vmem::StaticPage::new(),
   first_range_mem: ::vmem::StaticPage::new(),
   boot_pages: [::vmem::StaticPage::new(); BOOT_MEMORY_PAGES],
@@ -61,8 +61,6 @@ static mut USERSPACE: Option<Arc<RefCell<Userspace>>> = None;
 
 #[no_mangle]
 pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> ! {
-  let rsp_enter: usize;
-  unsafe { asm!("":"={rsp}"(rsp_enter))};
   // init drivers for core hardware
   bindriver::init();
   vga_println!("BoringOS v{}\n", version::VERSION);
@@ -74,7 +72,7 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
     assert!(boot_info.p4_table_addr == ::vmem::pagetable::P4 as u64);
     {
       debug!("Initializing VMEM Slab Allocator...");
-      unsafe { PAGER.lock().init_page_store(); }
+      unsafe { pager().init_page_store(); }
       debug!("Slab allocator initialized, adding memory");
       let mmap = &boot_info.memory_map;
       let mut usable_memory = 0;
@@ -92,11 +90,11 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
             debug!("Adding MMAPE {:#04x} to usable memory... {} KiBytes, {} Pages", x, size / 1024, size / 4096);
             usable_memory += size;
             unsafe { 
-              PAGER.lock().add_memory(
+              pager().add_memory(
                 ::vmem::pagelist::PhysAddr::new_unchecked(range.start_addr()),
                 (size / 4096) as usize - 1
               );
-              PAGER.lock().use_boot_memory = false;
+              pager().use_boot_memory = false;
             };
           },
           _ => {}
@@ -104,7 +102,7 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
       }
       debug!("Total usable memory: {:16} KiB, {:8} MiB", usable_memory / 1024, 
         usable_memory / 1024 / 1024);
-      let free_memory = PAGER.lock().free_memory();
+      let free_memory = pager().free_memory();
       debug!("Available memory: {} Bytes, {} KiB, {} MiB, {} Pages", 
         free_memory,
         free_memory / 1024,
@@ -114,7 +112,6 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
     }
     vga_print_green!("[ OK ]\n");
   }
-  breakpoint!();
   {
     vga_print!("Initializing Process Manager...");
     unsafe { USERSPACE = Some(Arc::new(RefCell::new(Userspace::new()))) }
@@ -144,13 +141,9 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
     vga_print_red!("[TODO]\n");
   }
   
-  dump_stack_addr!();
   debug!("entering userspace");
 
   userspace().enter();
-
-  unsafe { bindriver::qemu::qemu_shutdown(); }
-  panic!("Kernel terminated unexpectedly");
 }
 
 use core::panic::PanicInfo;
@@ -168,8 +161,7 @@ pub fn panic(info: &PanicInfo) -> ! {
   error!("Panic occured: {}", info);
   vga_print_red!("\n\n===== PANIC OCCURED IN KERNEL =====\n");
   vga_print_red!("{}\n", info);
-
-  loop {}
+  hlt_cpu!();
 }
 
 #[alloc_error_handler]
@@ -180,5 +172,5 @@ pub fn alloc_error(layout: core::alloc::Layout) -> ! {
   vga_print_red!("\n\n===== MEMORY SUBSYSTEM ERROR  =====\n");
   vga_print_red!("Attempted to allocate {} bytes, vmem subsystem returned error\n", layout.size());
 
-  loop{}
+  hlt_cpu!();
 }

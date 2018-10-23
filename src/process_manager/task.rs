@@ -23,13 +23,15 @@ impl Task {
   pub fn status(&self) -> Status {
     self.status
   }
-  pub fn restore(&mut self) {
+  pub fn restore(&mut self) -> ! {
     self.status = Status::Running;
-    self.state.restore()
+    self.state.restore();
+    panic!("returned from state restore");
   }
-  pub fn restore_new(&mut self) {
+  pub fn restore_new(&mut self) -> ! {
     self.status = Status::Running;
     self.state.restore_new();
+    panic!("returned from state restore");
   }
   pub fn save_and_clear(&mut self, rsp: usize) {
     self.status = Status::Runnable;

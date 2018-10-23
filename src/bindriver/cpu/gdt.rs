@@ -21,9 +21,9 @@ lazy_static! {
     tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
       make_stack!(4096)
     };
-    tss.interrupt_stack_table[SCHEDULER_IST_INDEX as usize] = {
+    /*tss.interrupt_stack_table[SCHEDULER_IST_INDEX as usize] = {
       make_stack!(8192)
-    };
+    };*/
     tss.interrupt_stack_table[INTR_IST_INDEX as usize] = {
       make_stack!(4096)
     };

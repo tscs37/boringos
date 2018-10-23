@@ -245,7 +245,12 @@ impl PageRange {
   // splits the range after the given number of pages and returns a new PageRange
   // with no links to a list
   fn sub_pages(&mut self, pages: usize) -> Option<PageRange> {
-    if pages > self.pages { None } else {
+    trace!("splitting range along link");
+    if pages > self.pages { 
+      trace!("wanted more pages than list is long, returning none");
+      None 
+    } else {
+      trace!("building new pagerange");
       let pr = PageRange{
         start: self.start,
         pages: pages,
@@ -256,6 +261,7 @@ impl PageRange {
         self.start.as_u64() + (pages * ::vmem::PAGE_SIZE) as u64
       ) };
       self.pages -= pages;
+      trace!("split pagerange, returning");
       Some(pr)
     }
   }
@@ -464,16 +470,20 @@ impl PageListLink {
       _ => {
       }
     }
+    trace!("did not directly grab a page, trying next block...");
     // skip one entry ahead to avoid recursion into self
     match self.next_any().next_entry_with_free() {
       Some(ne) => {
+        trace!("trying next pagelink {:?}", ne);
         PageListLink::PageListEntry(ne).grab_free()
       },
       None => {
+        trace!("no next block, need to convert, grabbing start");
         match self.get_start().convert_range(1) {
           Ok(pages) => trace!("converted {} pages", pages),
           Err(e) => panic!("conversion failed: {}", e),
         }
+        trace!("converted range, retrying grab...");
         match self.get_start().next_entry_with_free() {
           Some(ne) => {
             PageListLink::PageListEntry(ne).grab_free()
@@ -539,24 +549,35 @@ impl PageListLink {
     }
   }
   fn convert_range<'a>(&mut self, needed: usize) -> Result<usize, &'a str> {
+    trace!("grabbing next range");
     let next_range = self.get_start().next_range();
     if next_range.is_none() {
       return Err("there is no range installed anywhere");
     }
+    trace!("checking self...");
     let mut copy_self = *self;
     match copy_self {
       PageListLink::None => Err("attempted to convert after end of list"),
       PageListLink::PageRangeEntry(_) => Err("cannot convert page entry"),
       PageListLink::PageListEntry(ref mut p) => {
+        trace!("got next PLE, getting pointer");
         let pref: &mut PageList = unsafe{p.as_mut()};
+        trace!("checking if PLE is empty");
         if pref.has_empty() {
+          trace!("PLE has empty slots, counting");
           if pref.count_empty() >= needed {
+            trace!("PLE is larger than needed, grabbing some blocks");
             match next_range {
               None => Err("could not get any range to convert to memory"),
               Some(mut range) => {
+                trace!("getting range as mutable");
                 let rref: &mut PageRange = unsafe{range.as_mut()};
+                trace!("checking again if range has enough pages");
                 if rref.pages >= needed {
-                  match rref.sub_pages(needed) {
+                  trace!("has enough pages, grabbing subpages");
+                  let subpage = rref.sub_pages(needed);
+                  trace!("got subpage assembly");
+                  match subpage {
                     None => Err("rref refused to subdivide"),
                     Some(er) => {
                       trace!("inserting range {:?} into pref", er);
@@ -576,10 +597,12 @@ impl PageListLink {
                         }
                         self.release(PhysAddr::new_or_abort(rref as *mut _ as u64));
                       }
+                      trace!("grabbed all we need, returning...");
                       return Ok(needed);
                     }
                   }
                 } else {
+                  trace!("need more, recursing");
                   let max_needed = needed- rref.pages;
                   // convert all pages we have
                   return match self.convert_range(rref.pages) {
@@ -595,6 +618,7 @@ impl PageListLink {
               }
             }
           } else {
+            trace!("need more than range has, grabbing all and recursing...");
             let max_fit = pref.count_empty();
             let new_needed = needed - max_fit;
             let mut e = PageListLink::PageListEntry(NonNull::from(pref));
@@ -610,10 +634,9 @@ impl PageListLink {
         } else {
           let mut e = PageListLink::PageListEntry(NonNull::from(pref));
           match e.get_start().next_entry_with_empty() {
-            Some(e) => PageListLink::PageListEntry(e).
-              convert_range(needed),
-              //TODO: allocate new list
-              None => Err("no further empty slots")
+            Some(e) => 
+              { PageListLink::PageListEntry(e).convert_range(needed) },
+            None => Err("no further empty slots"),
           }
         }
       }
