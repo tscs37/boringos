@@ -20,27 +20,11 @@ impl State {
   pub fn restore(&mut self) {
     debug!("mapping stack");
     self.stack.map();
+    //TODO: switch stack
+    error!("did not switch stack");
     debug!("restoring stack and returning");
-    unsafe { asm!(
-      "
-      pop r15
-      pop r14
-      pop r13
-      pop r12
-      pop r11
-      pop r10
-      pop r9
-      pop r8
-      pop rbp
-      pop rdi
-      pop rsi
-      pop rdx
-      pop rcx
-      pop rbx
-      pop rax
-      ret
-      "
-    )};
+    pop_regs!();
+    unsafe { asm!("ret") };
   }
   pub fn restore_new(&mut self) {
     debug!("mapping stack of new process");

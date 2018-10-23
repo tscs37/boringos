@@ -1,5 +1,6 @@
 pub mod idt;
 pub mod gdt;
+pub mod pic;
 
 use ::raw_cpuid::{CpuId, FeatureInfo};
 use ::core::fmt::{Result, Write};

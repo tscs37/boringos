@@ -109,25 +109,7 @@ impl Scheduler {
   #[naked]
   #[inline(never)]
   pub fn yield_to(&self, th: Option<TaskHandle>) {
-    unsafe { asm!(
-      "
-      push rax
-      push rbx
-      push rcx
-      push rdx
-      push rsi
-      push rdi
-      push rbp
-      push r8
-      push r9
-      push r10
-      push r11
-      push r12
-      push r13
-      push r14
-      push r15
-      " :::: "intel", "volatile"
-    )};
+    push_regs!();
     let rsp: usize;
     unsafe {asm!(
       "" : "={rsp}"(rsp)::: "intel", "volatile"

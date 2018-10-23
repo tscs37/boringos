@@ -1,5 +1,7 @@
 extern crate x86_64;
 use x86_64::structures::idt::*;
+use ::bindriver::cpu::pic::PIC_1_OFFSET;
+pub const TIMER_INTERRUPT_ID: u8 = PIC_1_OFFSET;
 
 fn crack_locks() {
     unsafe { ::bindriver::serial::SERIAL1.force_unlock() }
@@ -12,7 +14,7 @@ macro_rules! busy_intr_handler {
             crack_locks();
             debug!("Intterupt occured");
             debug!("Interrupt {}:\n{:?}", stringify!($name), stack_frame);
-            loop{}
+            hlt_loop();
         }
     };
 }
@@ -23,7 +25,7 @@ macro_rules! busy_intr_handle_errcode {
             crack_locks();
             debug!("Intterupt occured");
             debug!("Interrupt {} ({:#018x}):\n{:?}", stringify!($name), err, stack_frame);
-            loop{}
+            hlt_loop();
         }
     };
 }
@@ -55,11 +57,13 @@ lazy_static! {
         intr!(idt, general_protection_fault);
         intr!(idt, page_fault);
         intr!(idt, machine_check);
+        idt[usize::from(TIMER_INTERRUPT_ID)]
+            .set_handler_fn(timer_interrupt);
         idt
     };
 }
 
-pub fn init_idt() {
+pub fn init() {
     IDT.load();
 }
 
@@ -86,7 +90,7 @@ extern "x86-interrupt" fn double_fault(stack_frame: &mut ExceptionStackFrame, er
     error!("Error: {:x}", error_code);
     vga_println!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
     vga_println!("\n\nBUSY LOOPING CORE");
-    loop {}
+    hlt_loop();
 }
 
 extern "x86-interrupt" fn page_fault(
@@ -124,5 +128,19 @@ extern "x86-interrupt" fn page_fault(
             stack_frame
         );
         panic!("pagefault todo:");
+    }
+}
+
+extern "x86-interrupt" fn timer_interrupt(
+    stack_frame: &mut ExceptionStackFrame)
+{
+    crack_locks();
+    debug!("timer interrupt");
+    ::bindriver::cpu::pic::end_of_interrupt(TIMER_INTERRUPT_ID);
+}
+
+pub fn hlt_loop() -> ! {
+    loop {
+        ::x86_64::instructions::hlt();
     }
 }
