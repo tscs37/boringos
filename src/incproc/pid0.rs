@@ -6,6 +6,7 @@ pub fn pid0() {
   let initramfs = include_bytes!("../../initramfs.bin");
   debug!("Loading {} byte long initramfs", initramfs.len());
   debug!("Creating Scheduler Task... ");
+  let ph = ipc_call!(bos_new_process);
   //TODO:
   proc_yield!(); // Yield once to make sure everything is alright
   debug!("Starting Time Provider...");

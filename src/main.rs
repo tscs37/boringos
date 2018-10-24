@@ -151,7 +151,7 @@ use core::panic::PanicInfo;
 pub fn coredump() -> ! {
   error!("Kernel Core Dumped");
   vga_print_red!("\n\n===== CORE DUMPED =====\n");
-  loop {}
+  hlt_cpu!();
 }
 
 /// This function is called on panic.

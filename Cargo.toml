@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Tim Schuster <mail@timschuster.info>"]
 
 [dependencies]
-bootloader = "0.3.0"
+bootloader = "0.3.2"
 volatile = "0.2.3"
 spin = "0.4.6"
 uart_16550 = "0.1.0"

@@ -95,22 +95,48 @@ extern "x86-interrupt" fn page_fault(
     stack_frame: &mut ExceptionStackFrame,
     error_code: PageFaultErrorCode,
 ) {
-    crack_locks();
     debug!("Page Fault occured, handling in kernel");
     let addr: usize;
     unsafe { asm!("mov rax, cr2":"={eax}"(addr)::"eax":"intel", "volatile") };
     use vmem::pagetable::Page;
-    use vmem::{mapper::map_new, mapper::MapType, PhysAddr, PAGE_SIZE};
+    use vmem::{mapper::map_new, mapper::unmap, mapper::MapType, 
+        PhysAddr, PAGE_SIZE};
     let page = Page::containing_address(addr);
     let paddr = unsafe { PhysAddr::new_unchecked(page.start_address() as u64) };
-    let is_kstack = page.start_address() >= ::vmem::KSTACK_END - PAGE_SIZE
+    let is_kstack = page.start_address() >= ::vmem::KSTACK_END
             && page.start_address() <= ::vmem::KSTACK_START + PAGE_SIZE;
-    let prot_violation = error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION);
+    let is_ustack = page.start_address() >= ::vmem::STACK_END 
+            && page.start_address() <= ::vmem::STACK_START + PAGE_SIZE;
+    let prot_violation = error_code.contains(
+        PageFaultErrorCode::PROTECTION_VIOLATION);
+    let instr_fetch = error_code.contains(
+        PageFaultErrorCode::INSTRUCTION_FETCH);
+    let malformed_table = error_code.contains(
+        PageFaultErrorCode::MALFORMED_TABLE);
+    debug!("checking page fault error");
+    if malformed_table {
+        error!("page table malformed at {:#018x}", addr);
+        unmap(paddr, 1, MapType::Guard);
+    }
     if !prot_violation {
         if is_kstack
         {
+            if instr_fetch {
+                panic!("kernel attempted to run instruction from stack");
+            }
             debug!("mapping kstack page to {:#018x}", page.start_address());
             map_new(paddr, MapType::Stack);
+            //TODO: adjust kernel stack size
+            debug!("mapped, returning...");
+            return;
+        } else if is_ustack {
+            if instr_fetch {
+                //TODO: kill task instead
+                panic!("task attempted to run instruction from stack")
+            }
+            debug!("mapping user stack page to {:#018x}", page.start_address());
+            map_new(paddr, MapType::Stack);
+            //TODO: adjust task stack size
             debug!("mapped, returning...");
             return;
         } else if page.start_address() == ::vmem::KSTACK_GUARD {
@@ -119,9 +145,23 @@ extern "x86-interrupt" fn page_fault(
             panic!("cannot map userspace yet: {:#018x}", page.start_address());
         }
     } else {
+        if paddr.as_usize() > ::vmem::pagetable::LOW_PAGE_TABLE {
+            debug!("page fault in page table area, checking if mapped...");
+            if ::vmem::mapper::is_mapped(paddr) {
+                panic!("page fault in mapped page table");
+            } else {
+                panic!("page fault in unmapped page table");
+                //map_new(paddr, MapType::Data);
+                //return;
+            }
+        }
+        if is_kstack || is_ustack {
+            debug!("protection violation in stack area");
+        }
         debug!(
-            "uncovered pagefault occured: {:#018x} => {:?} \n\n {:?}",
+            "uncovered pagefault occured: {:#018x} => ({:x}) {:?} \n\n {:?}",
             page.start_address(),
+            error_code,
             error_code,
             stack_frame
         );
@@ -133,15 +173,8 @@ extern "x86-interrupt" fn page_fault(
 }
 
 extern "x86-interrupt" fn timer_interrupt(
-    stack_frame: &mut ExceptionStackFrame)
+    _stack_frame: &mut ExceptionStackFrame)
 {
-    crack_locks();
     debug!("timer interrupt");
     ::bindriver::cpu::pic::end_of_interrupt(TIMER_INTERRUPT_ID);
-}
-
-pub fn hlt_loop() -> ! {
-    loop {
-        ::x86_64::instructions::hlt();
-    }
 }

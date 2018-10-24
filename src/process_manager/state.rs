@@ -1,5 +1,4 @@
 use ::vmem::PhysAddr;
-use ::alloc::boxed::Box;
 
 pub struct State {
   mode: CPUMode,
@@ -13,10 +12,12 @@ impl State {
     State{
       mode: CPUMode::Kernel,
       instr_ptr: PhysAddr::new(ptr as *mut u8 as u64).expect("kernelstate needs function pointer"),
-      stack: super::stack::Stack::new_64kstack(),
+      stack: super::stack::Stack::new_userstack(),
       rsp: ::vmem::STACK_START,
     }
   }
+  #[cold]
+  #[inline(never)]
   pub fn restore(&mut self) {
     debug!("mapping stack");
     self.stack.map();
@@ -31,14 +32,15 @@ impl State {
     self.stack.map();
     debug!("loading RIP and RSP");
     let rip = self.instr_ptr.as_usize();
-    debug!("prepare to yield");
+    debug!("prepare to yield to {:x}", rip);
     unsafe { asm!(
       "
+      mov rsp, $0
       push $1
       ret
       "
-       : : "{rsp}"(self.rsp), "r"(rip) : 
-       "rsp") }
+       : : "r"(self.rsp), "r"(rip) : 
+       "rsp": "intel","volatile") }
   }
   pub fn save_and_clear(&mut self, rsp: usize) {
     self.stack.unmap();

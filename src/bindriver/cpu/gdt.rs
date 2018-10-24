@@ -3,7 +3,7 @@ use x86_64::structures::tss::TaskStateSegment;
 use x86_64::structures::gdt::{GlobalDescriptorTable, Descriptor, SegmentSelector};
 
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
-pub const SCHEDULER_IST_INDEX: u16 = 1;
+//pub const SCHEDULER_IST_INDEX: u16 = 1;
 pub const INTR_IST_INDEX: u16 = 2;
 
 macro_rules! make_stack {
@@ -19,13 +19,13 @@ lazy_static! {
   static ref TSS: TaskStateSegment = {
     let mut tss = TaskStateSegment::new();
     tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
-      make_stack!(4096)
+      make_stack!(4096 * 16)
     };
     /*tss.interrupt_stack_table[SCHEDULER_IST_INDEX as usize] = {
       make_stack!(8192)
     };*/
     tss.interrupt_stack_table[INTR_IST_INDEX as usize] = {
-      make_stack!(4096)
+      make_stack!(4096 * 16)
     };
     tss
   };

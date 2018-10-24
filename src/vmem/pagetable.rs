@@ -11,6 +11,8 @@ const HI_ADDR_SPACE: usize = 0xffff_8000_0000_0000;
 pub const PAGE_ADDR_FILTER: u64 = 0x000fffff_fffff000;
 pub const P4: *mut Table<Level4> = 0xffffffff_fffff000 as *mut _;
 
+pub const LOW_PAGE_TABLE: usize= 0xFFFF_FF80_0000_0000;
+
 pub type PagePhysAddr = usize;
 pub type PageVirtAddr = usize;
 
@@ -138,9 +140,7 @@ impl ActivePageTable {
     }
   pub fn map(&mut self, page: Page, flags: EntryFlags,
     pm: &mut PageManager) -> PhysAddr {
-      debug!("mapping!");
       let frame = unsafe { pm.alloc_page() }.expect("out of memory");
-      debug!("mapping!");
       self.map_to(page, frame, flags, pm);
       frame
     }
@@ -154,6 +154,7 @@ impl ActivePageTable {
 
   pub fn unmap(&mut self, page: Page,
     pm: &mut PageManager) {
+      //todo: support unmapping huge pages
       let p1 = self.p4_mut()
         .next_table_mut(page.p4_index())
         .and_then(|p3| p3.next_table_mut(page.p3_index()))

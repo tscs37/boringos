@@ -1,9 +1,9 @@
-pub mod idt;
 pub mod gdt;
+pub mod idt;
 pub mod pic;
 
-use ::raw_cpuid::{CpuId, FeatureInfo};
-use ::core::fmt::{Result, Write};
+use core::fmt::{Result, Write};
+use raw_cpuid::{CpuId, FeatureInfo};
 
 fn cpuid() -> CpuId {
   CpuId::new()
@@ -26,5 +26,14 @@ pub fn has_acpi() -> bool {
     info.has_acpi()
   } else {
     false
+  }
+}
+
+pub fn enable_nxe_bit() {
+  unsafe {
+    use x86_64::registers::model_specific::Efer;
+    let mut flags = Efer::read_raw();
+    flags |= 1 << 11;
+    Efer::write_raw(flags);
   }
 }

@@ -42,7 +42,7 @@ debug: bootimage
 	qemu-$(QEMU_PLATFORM) $(QEMU_OPTIONS) -S -s || exit 0
 
 gdb: bootimage
-	gdb -x script.gdb
+	gdb -q target/$(TARGET)/debug/$(CRATE) -x script.gdb
 
 no_vga: bootimage
 	qemu-$(QEMU_PLATFORM) $(QEMU_OPTIONS) -display none || exit 0

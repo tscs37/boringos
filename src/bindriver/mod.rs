@@ -8,6 +8,7 @@ pub mod cpu;
 pub fn init() {
   ::bindriver::serial::init();
   debug!("setting up CPU IDT");
+  ::bindriver::cpu::enable_nxe_bit();
   ::bindriver::cpu::gdt::init();
   ::bindriver::cpu::idt::init();
   ::bindriver::cpu::pic::init();
