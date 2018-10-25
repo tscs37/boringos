@@ -463,6 +463,8 @@ impl PageListLink {
             pldr.used[x] = true;
             let addr = pldr.pages[x].
               expect("nonused page grabbed but was none");
+            trace!("zeroing page");
+            unsafe { zero_page(addr) };
             return Some(addr);
           }
         }
