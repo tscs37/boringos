@@ -35,13 +35,13 @@ impl Userspace {
   pub fn enter(&self) -> ! {
     debug!("going for yield_stage2, direct entry into PID0");
     match self.scheduler() {
-      Ok(s) => unsafe { 
+      Some(s) => unsafe { 
         debug!("mapping new kernel stack");
-        (*s.kernel_stack).borrow().map();
+        (*s.kernel_stack).read().map();
         self.yield_to(Some(TaskHandle::from_c(0,0)));
         panic!("returned from userspace enter")
       },
-      Err(p) => panic!("{}", p),
+      None => panic!("Could not lock scheduler"),
     }
   }
   pub fn yield_to(&self, th: Option<TaskHandle>) {
@@ -78,23 +78,23 @@ impl Scheduler {
     let nulltaskh = TaskHandle::from(ProcessHandle::from(Handle::from(0)), Handle::from(0));
     nullproc.add_task(&nulltaskh);
     let s = Scheduler {
-      treg: Arc::new(RefCell::new(TaskHandleRegistry::new())),
-      preg: Arc::new(RefCell::new(ProcessHandleRegistry::new())),
+      treg: Arc::new(RwLock::new(TaskHandleRegistry::new())),
+      preg: Arc::new(RwLock::new(ProcessHandleRegistry::new())),
       scheduler_thandle: nulltaskh,
       pid_provider_thandle: nulltaskh,
       current_task: nulltaskh,
-      kernel_stack: Arc::new(RefCell::new(Stack::new_kstack())),
+      kernel_stack: Arc::new(RwLock::new(Stack::new_kstack())),
     };
     s.register_process(&ProcessHandle::from(Handle::from(0)), 
-      Rc::new(RefCell::new(nullproc)));
-    s.insert_treg(&TaskHandle::from_c(0,0), Rc::new(RefCell::new(nulltask)));
+      nullproc);
+    s.insert_treg(&TaskHandle::from_c(0,0), nulltask);
     s
   }
   pub fn current_task(&self) -> TaskHandle {
     self.current_task
   }
-  pub fn register_process(&mut self, ph: &ProcessHandle, p: Rc<RefCell<Process>>) {
-    self.insert_preg(ph, p);
+  pub fn register_process(&mut self, ph: &ProcessHandle, p: Process) {
+    self.insert_preg(ph, Arc::new(RwLock::new(p)));
   }
   pub fn register_scheduler(&mut self, th: &TaskHandle) {
     self.current_task = *th;
@@ -111,22 +111,22 @@ impl Scheduler {
       debug!("new task with handle {}", h);
       let th = TaskHandle::from(*ph, h);
       p.add_task(&th);
-      self.insert_preg(ph, Rc::new(RefCell::new(p)));
-      self.insert_treg(&th, Rc::new(RefCell::new(t)));
+      self.insert_preg(ph, Arc::new(RwLock::new(p)));
+      self.insert_treg(&th, Arc::new(RwLock::new(t)));
 
       Ok(th)
   }
-  fn insert_treg(&self, th: &TaskHandle, t: Rc<RefCell<Task>>) {
-    (*self.treg).borrow_mut().insert(th, t)
+  fn insert_treg(&self, th: &TaskHandle, t: Task) {
+    (*self.treg).write().insert(th, Arc::new(RwLock::new(t)))
   }
-  fn insert_preg(&self, ph: &ProcessHandle, p: Rc<RefCell<Process>>) {
-    (*self.preg).borrow_mut().insert(ph, p)
+  fn insert_preg(&self, ph: &ProcessHandle, p: Process) {
+    (*self.preg).write().insert(ph, Arc::new(RwLock::new(p)))
   }
-  pub fn resolve_th(&self, th: &TaskHandle) -> Option<Rc<RefCell<Task>>> {
-    (*self.treg).borrow().resolve(th).and_then(|x| Some(x.clone()))
+  pub fn resolve_th(&self, th: &TaskHandle) -> Option<Arc<RwLock<Task>>> {
+    (*self.treg).read().resolve(th).and_then(|x| Some(x.clone()))
   }
-  pub fn resolve_ph(&self, ph: &ProcessHandle) -> Option<Rc<RefCell<Process>>> {
-    (*self.preg).borrow().resolve(ph).and_then(|x| Some(x.clone()))
+  pub fn resolve_ph(&self, ph: &ProcessHandle) -> Option<Arc<RwLock<Process>>> {
+    (*self.preg).read().resolve(ph).and_then(|x| Some(x.clone()))
   }
   // yield_to will save the current process and task context and then
   // call yield_stage2 with the given process handle
