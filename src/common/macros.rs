@@ -41,7 +41,7 @@ macro_rules! breakpoint {
 
 macro_rules! pop_regs {
   () => {
-      unsafe { asm!(
+      asm!(
       "
       popfq
       pop r15
@@ -61,7 +61,7 @@ macro_rules! pop_regs {
       pop rax
       "
       :::: "intel", "volatile"
-    )};
+    );
   }
 }
 

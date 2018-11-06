@@ -24,23 +24,31 @@ impl Userspace {
       scheduler: Arc::new(RwLock::new(Scheduler::new())),
     }
   }
-  pub fn scheduler<'a>(&self) -> Option<RwLockReadGuard<'a, Scheduler>> {
-    (*self.scheduler.clone()).try_read()
+  pub fn in_scheduler<T>(&self, run: impl Fn(RwLockReadGuard<Scheduler>)->T) -> Result<T, ()> {
+    match (*self.scheduler).try_read() {
+      None => Err(()),
+      Some(sched) => Ok(run(sched)),
+    }
   }
-  pub fn scheduler_mut<'a>(&self) -> Option<RwLockWriteGuard<'a, Scheduler>> {
-    (*self.scheduler.clone()).try_write()
+  pub fn in_scheduler_spin<T>(&self, run: impl Fn(RwLockReadGuard<Scheduler>)->T) -> T {
+    run((*self.scheduler).read())
+  }
+  pub fn in_scheduler_mut<T>(&self, run: impl Fn(RwLockWriteGuard<Scheduler>)->T) -> Result<T, ()> {
+    match (*self.scheduler).try_write() {
+      None => Err(()),
+      Some(sched) => Ok(run(sched)),
+    }
+  }
+  pub fn in_scheduler_mut_spin<T>(&self, run: impl Fn(RwLockWriteGuard<Scheduler>)->T) -> T {
+    run((*self.scheduler).write())
   }
   pub fn enter(&self) -> ! {
     debug!("going for yield_stage2, direct entry into PID0");
-    match self.scheduler() {
-      Some(s) => unsafe { 
-        debug!("mapping new kernel stack");
-        (*s.kernel_stack).read().map();
-        self.yield_to(Some(TaskHandle::from_c(0,0)));
-        panic!("returned from userspace enter")
-      },
-      None => panic!("Could not lock scheduler"),
-    }
+    self.in_scheduler(|sched| {
+      (*sched.kernel_stack).read().map()
+    });
+    self.yield_to(Some(TaskHandle::from_c(0,0)));
+    panic!("returned from userspace enter")
   }
   pub fn yield_to(&self, th: Option<TaskHandle>) {
     match th {
@@ -71,11 +79,11 @@ use ::alloc::string::String;
 impl Scheduler {
   pub fn new() -> Scheduler {
     use alloc::prelude::ToString;
-    let nullproc = Process::new("null".to_string(), &ProcessHandle::from(Handle::from(0)));
+    let mut nullproc = Process::new("null".to_string(), &ProcessHandle::from(Handle::from(0)));
     let nulltask = Task::new_nulltask();
     let nulltaskh = TaskHandle::from(ProcessHandle::from(Handle::from(0)), Handle::from(0));
     nullproc.add_task(&nulltaskh);
-    let s = Scheduler {
+    let mut s = Scheduler {
       treg: Arc::new(RwLock::new(TaskHandleRegistry::new())),
       preg: Arc::new(RwLock::new(ProcessHandleRegistry::new())),
       scheduler_thandle: nulltaskh,
@@ -129,33 +137,32 @@ impl Scheduler {
   // yield_to will save the current process and task context and then
   // call yield_stage2 with the given process handle
   // this function will be called by the scheduler
-  pub fn yield_to(&self, rsp: usize, th: Option<TaskHandle>) {
+  pub fn yield_to(&mut self, th: Option<TaskHandle>) {
     //pivot_to_kernel_stack!();
     debug!("entering scheduler code");
     match th {
       None => {
         let sched = self.scheduler_thandle;
-        self.yield_stage2_sched_internal(sched);
+        unsafe { self.yield_stage2_sched_internal(sched) };
       }
       Some(th) => { 
         debug!("updating current task to {}", th);
         let us = ::userspace();
         {
-          match us.scheduler_mut() {
-            None => panic!("need scheduler mutably for updating current task"),
-            Some(s) => { s.current_task = th },
-          }
+          us.in_scheduler_mut_spin(|mut sched| {
+            sched.current_task = th;
+          });
         }
-        self.yield_stage2_sched_internal(th)
+        unsafe{ self.yield_stage2_sched_internal(th) }
       },
     }
   }
-  pub unsafe fn yield_stage2_sched(self, th: TaskHandle) {
+  pub unsafe fn yield_stage2_sched(&mut self, th: TaskHandle) {
       self.yield_stage2_sched_internal(th);
   }
-  unsafe fn yield_stage2_sched_internal(&self, th: TaskHandle) {
+  unsafe fn yield_stage2_sched_internal(&mut self, th: TaskHandle) {
     debug!("entering scheduler stage 2 final for {}", th);
-    if let Some(task) = (*self.treg).read().resolve(&th) {
+    if let Some(task) = (*(self.treg)).read().resolve(&th) {
       use self::task::Status;
       let mut taskb = (*task).write();
       if let Some(taskc) = (*self.treg).read().resolve(&self.current_task) {
@@ -166,16 +173,16 @@ impl Scheduler {
         };
       }
       panic!("current task did not resolve")
-    } else {
-      if th.into().into() == 0 && th.process_handle().into().into() == 0 {
-        let sched = self.scheduler_thandle;
-        if sched.into().into() == 0 && th.process_handle().into().into() == 0 {
-          panic!("attempted to yield but no process manager is present");
-        }
-        self.yield_stage2_sched_internal(sched);
-      } else {
-        panic!("tried to yield to non-existant task handle {}", th);
+    }
+    if th.into().into() == 0 && th.process_handle().into().into() == 0 {
+      let sched = self.scheduler_thandle;
+      if sched.into().into() == 0 && th.process_handle().into().into() == 0 {
+        panic!("attempted to yield but no process manager is present");
       }
+      panic!("recursed into scheduler");
+      self.yield_stage2_sched_internal(sched);
+    } else {
+      panic!("tried to yield to non-existant task handle {}", th);
     }
   }
 }

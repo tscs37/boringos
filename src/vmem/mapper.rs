@@ -49,7 +49,7 @@ pub fn map(base_addr: PhysAddr, pl: Vec<PhysAddr>, mt: MapType) {
   };
   match mt {
     MapType::Stack => {
-      let guard_addr = unsafe { PhysAddr::new_unchecked(
+      /*let guard_addr = unsafe { PhysAddr::new_unchecked(
         base_addr.as_u64() + 1 * PAGE_SIZE as u64
       )};
       let guard_addr_op = unsafe { PhysAddr::new_unchecked(
@@ -57,7 +57,7 @@ pub fn map(base_addr: PhysAddr, pl: Vec<PhysAddr>, mt: MapType) {
       )};
       let guard_map = unsafe { vec!(PhysAddr::new_unchecked(
         ::vmem::GUARD_PAGE as u64 & ::vmem::PAGE_ADDR_FILTER
-      )) };
+      )) };*/
       //debug!("map stackunderflow guard page to {}", guard_addr);
       //unmap(guard_addr, 1, MapType::Guard);
       //debug!("map stackoverflow guard page to {}", guard_addr_op);
@@ -75,12 +75,12 @@ pub fn unmap(base_addr: PhysAddr, pl_size: usize, mt: MapType) {
     apt.unmap(Page::containing_address(addr), pm);
   }
   match mt {
-    Stack => {
-      let guard_addr = unsafe { PhysAddr::new_unchecked(
+    MapType::Stack => {
+      /*let guard_addr = unsafe { PhysAddr::new_unchecked(
         base_addr.as_u64() + PAGE_SIZE as u64) };
       let guard_addr_op = unsafe { PhysAddr::new_unchecked(
         base_addr.as_u64() - ((pl_size + 1) * PAGE_SIZE) as u64)
-      };
+      };*/
       //trace!("unmap stackunderflow guard page");
       //unmap(guard_addr, 1, MapType::Guard);
       //trace!("unmap stackoverflow guard page");

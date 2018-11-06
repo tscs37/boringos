@@ -33,5 +33,5 @@ pub extern "C" fn yield_to(t: u64, p: u64) {
   let th = TaskHandle::from_c(t, p);
   debug!("Yielding to task {:?}", th);
   use ::process_manager::TaskHandle;
-  ::userspace().yield_to(Some(th))
+  ::userspace().in_scheduler_mut(|mut sched| sched.yield_to(Some(th)));
 }

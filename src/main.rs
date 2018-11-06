@@ -119,20 +119,19 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
     let us = userspace();
     {
       use ::alloc::string::String;
-      let mut sched_mut = us.scheduler_mut().expect("need scheduler to setup PID0");
-      match sched_mut.new_kproc(
-        String::from("pid0"), 
-        ::incproc::pid0)
-        {
-          Err(_) => {
-            vga_print_red!("[FAIL]");
-            panic!("could not setup pid0")
-          },
-          Ok(sched) => {
-            sched_mut.register_scheduler(&sched);
-            debug!("Scheduler created with handle {}", sched);
-          },
+      us.in_scheduler_mut_spin(|mut sched| {
+        let pid0h = sched.new_kproc(String::from("pid0"), ::incproc::pid0);
+        match pid0h {
+          Ok(pid0h) => {
+            sched.register_scheduler(&pid0h);
+            debug!("Scheduler created with handle {}", pid0h);
+          }
+          Err(()) => {
+            error!("Could not create PID0 KProc");
+            vga_print_red!("[ERR!]");
+          }
         }
+      });
     }
     vga_print_green!("[ OK ]\n");
   }

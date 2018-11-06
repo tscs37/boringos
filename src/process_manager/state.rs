@@ -39,6 +39,8 @@ impl State {
   #[cold]
   #[inline(never)]
   pub fn switch_to(&mut self, next: &mut State) {
+    debug!("Switching context");
+    unsafe {
     self.active = false;
     next.active = true;
     self.stack.unmap();
@@ -69,7 +71,8 @@ impl State {
     asm!("mov $0, rbp": "=r"(self.rbp) : : "memory": "intel", "volatile");
     asm!("mov rbp, $0": : "r"(next.rsp) : "memory" : "intel", "volatile");
     pop_regs!();
-    unsafe { asm!("ret") };
+    asm!("ret");
+    }
   }
 }
 
