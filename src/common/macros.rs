@@ -1,5 +1,3 @@
-#[allow(unused_macros)]
-
 macro_rules! proc_yield {
   () => {
     ::common::yield_to(0,0);
@@ -93,7 +91,7 @@ macro_rules! panic_on_drop {
 macro_rules! hlt_cpu {
   () => {
     loop {
-      ::x86_64::instructions::hlt();
+      hlt_once!();
     }
   }
 }

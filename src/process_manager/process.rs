@@ -1,7 +1,6 @@
 use ::alloc::string::String;
 use ::alloc::vec::Vec;
-use ::process_manager::{Task, TaskHandle, ProcessHandle};
-use ::core::ptr::NonNull;
+use ::process_manager::{TaskHandle, ProcessHandle};
 
 
 pub struct Process {

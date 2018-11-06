@@ -4,9 +4,7 @@ mod state;
 mod memory;
 mod handles;
 
-use ::alloc::rc::Rc;
 use ::alloc::sync::Arc;
-use ::core::cell::{RefCell, RefMut, BorrowError, BorrowMutError, Ref};
 pub use ::process_manager::handles::{ProcessHandle, TaskHandle, Handle};
 pub use ::process_manager::process::Process;
 pub use ::process_manager::task::Task;
@@ -94,7 +92,7 @@ impl Scheduler {
     self.current_task
   }
   pub fn register_process(&mut self, ph: &ProcessHandle, p: Process) {
-    self.insert_preg(ph, Arc::new(RwLock::new(p)));
+    self.insert_preg(ph, p);
   }
   pub fn register_scheduler(&mut self, th: &TaskHandle) {
     self.current_task = *th;
@@ -111,16 +109,16 @@ impl Scheduler {
       debug!("new task with handle {}", h);
       let th = TaskHandle::from(*ph, h);
       p.add_task(&th);
-      self.insert_preg(ph, Arc::new(RwLock::new(p)));
-      self.insert_treg(&th, Arc::new(RwLock::new(t)));
+      self.insert_preg(ph, p);
+      self.insert_treg(&th, t);
 
       Ok(th)
   }
   fn insert_treg(&self, th: &TaskHandle, t: Task) {
-    (*self.treg).write().insert(th, Arc::new(RwLock::new(t)))
+    (*self.treg).write().insert(th, t)
   }
   fn insert_preg(&self, ph: &ProcessHandle, p: Process) {
-    (*self.preg).write().insert(ph, Arc::new(RwLock::new(p)))
+    (*self.preg).write().insert(ph, p)
   }
   pub fn resolve_th(&self, th: &TaskHandle) -> Option<Arc<RwLock<Task>>> {
     (*self.treg).read().resolve(th).and_then(|x| Some(x.clone()))
@@ -144,8 +142,8 @@ impl Scheduler {
         let us = ::userspace();
         {
           match us.scheduler_mut() {
-            Err(_) => panic!("need scheduler mutably for updating current task"),
-            Ok(ref mut s) => { s.current_task = th },
+            None => panic!("need scheduler mutably for updating current task"),
+            Some(s) => { s.current_task = th },
           }
         }
         self.yield_stage2_sched_internal(th)
@@ -157,13 +155,13 @@ impl Scheduler {
   }
   unsafe fn yield_stage2_sched_internal(&self, th: TaskHandle) {
     debug!("entering scheduler stage 2 final for {}", th);
-    if let Some(task) = (*self.treg).borrow().resolve(&th) {
+    if let Some(task) = (*self.treg).read().resolve(&th) {
       use self::task::Status;
-      let mut taskb = (*task).borrow_mut();
-      if let Some(taskc) = (*self.treg).borrow().resolve(&self.current_task) {
+      let mut taskb = (*task).write();
+      if let Some(taskc) = (*self.treg).read().resolve(&self.current_task) {
         self.current_task = th;
         match taskb.status() {
-          Status::New => (*taskc).borrow_mut().switch_to(taskb),
+          Status::New => (*taskc).write().switch_to(&mut taskb),
           _ => panic!("TODO: implement returning from new tasks"),
         };
       }
