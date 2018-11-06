@@ -1,8 +1,6 @@
 pub mod gdt;
 pub mod idt;
 pub mod pic;
-
-use core::fmt::{Result, Write};
 use raw_cpuid::{CpuId, FeatureInfo};
 
 fn cpuid() -> CpuId {

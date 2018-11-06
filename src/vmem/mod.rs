@@ -13,6 +13,8 @@ pub const KSTACK_START: usize  = 0xffff_ff79_fffe_0000;
 pub const KSTACK_END: usize    = 0xffff_ff78_0000_0000;
 pub const GUARD_PAGE: usize    = 0xffff_ff77_ffff_0000;
 pub const STACK_START: usize   = 0xffff_ff77_fffe_0000;
+pub const STACK_END: usize     = 0xffff_ff00_0001_0000;
+pub const UGUARD_PAGE: usize   = 0xffff_ff00_0000_0000;
 
 pub use ::vmem::pagelist::PhysAddr;
 pub use ::vmem::pagetable::PAGE_ADDR_FILTER;

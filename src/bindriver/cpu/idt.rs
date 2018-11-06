@@ -99,7 +99,7 @@ extern "x86-interrupt" fn page_fault(
     let addr: usize;
     unsafe { asm!("mov rax, cr2":"={eax}"(addr)::"eax":"intel", "volatile") };
     use vmem::pagetable::Page;
-    use vmem::{mapper::map_new, mapper::unmap, mapper::MapType, 
+    use vmem::{mapper::map_new, mapper::MapType, 
         PhysAddr, PAGE_SIZE};
     let page = Page::containing_address(addr);
     let paddr = unsafe { PhysAddr::new_unchecked(page.start_address() as u64) };

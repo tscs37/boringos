@@ -13,24 +13,24 @@ pub use ::process_manager::task::Task;
 pub use ::process_manager::state::State;
 use ::process_manager::handles::{ProcessHandleRegistry, TaskHandleRegistry};
 use ::process_manager::memory::Stack;
-use ::spin::RwLock;
+use ::spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 #[derive(Clone)]
 pub struct Userspace {
-  scheduler: Arc<RefCell<Scheduler>>,
+  scheduler: Arc<RwLock<Scheduler>>,
 }
 
 impl Userspace {
   pub fn new() -> Userspace {
     Userspace {
-      scheduler: Arc::new(RefCell::new(Scheduler::new())),
+      scheduler: Arc::new(RwLock::new(Scheduler::new())),
     }
   }
-  pub fn scheduler<'a>(&self) -> Result<Ref<'_, Scheduler>, BorrowError> {
-    (*self.scheduler).try_borrow()
+  pub fn scheduler<'a>(&self) -> Option<RwLockReadGuard<'a, Scheduler>> {
+    (*self.scheduler.clone()).try_read()
   }
-  pub fn scheduler_mut<'a>(&self) -> Result<RefMut<'_, Scheduler>, BorrowMutError> {
-    (*self.scheduler).try_borrow_mut()
+  pub fn scheduler_mut<'a>(&self) -> Option<RwLockWriteGuard<'a, Scheduler>> {
+    (*self.scheduler.clone()).try_write()
   }
   pub fn enter(&self) -> ! {
     debug!("going for yield_stage2, direct entry into PID0");

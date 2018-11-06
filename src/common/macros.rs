@@ -1,3 +1,5 @@
+#[allow(unused_macros)]
+
 macro_rules! proc_yield {
   () => {
     ::common::yield_to(0,0);

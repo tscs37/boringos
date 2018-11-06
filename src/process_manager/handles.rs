@@ -3,6 +3,7 @@ use ::process_manager::{Task,Process};
 use ::alloc::collections::BTreeMap;
 use ::core::cell::RefCell;
 use ::alloc::rc::Rc;
+use ::alloc::sync::Arc;
 use ::spin::RwLock;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -55,13 +56,13 @@ impl ProcessHandleRegistry {
   pub fn new() -> ProcessHandleRegistry {
     ProcessHandleRegistry(BTreeMap::new())
   }
-  pub fn insert(&mut self, ph: &ProcessHandle, p: Rc<RefCell<Process>>) {
-    self.0.insert(*ph, p);
+  pub fn insert(&mut self, ph: &ProcessHandle, p: Process) {
+    self.0.insert(*ph, Arc::new(RwLock::new(p)));
   }
-  pub fn resolve(&self, ph: &ProcessHandle) -> Option<&Rc<RefCell<Process>>> {
+  pub fn resolve(&self, ph: &ProcessHandle) -> Option<&Arc<RwLock<Process>>> {
     self.0.get(ph)
   }
-  pub fn resolve_task(&self, th: &TaskHandle) -> Option<&Rc<RefCell<Process>>> {
+  pub fn resolve_task(&self, th: &TaskHandle) -> Option<&Arc<RwLock<Process>>> {
     self.resolve(&th.process_handle())
   }
 }
@@ -96,10 +97,10 @@ impl TaskHandleRegistry {
   pub fn new() -> TaskHandleRegistry {
     TaskHandleRegistry(BTreeMap::new())
   }
-  pub fn insert(&mut self, th: &TaskHandle, t: Rc<RefCell<Task>>) {
-    self.0.insert(*th, t);
+  pub fn insert(&mut self, th: &TaskHandle, t: Task) {
+    self.0.insert(*th, Arc::new(RwLock::new(t)));
   }
-  pub fn resolve(&self, th: &TaskHandle) -> Option<&Rc<RefCell<Task>>> {
+  pub fn resolve(&self, th: &TaskHandle) -> Option<&Arc<RwLock<Task>>> {
     self.0.get(th)
   }
 }
