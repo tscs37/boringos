@@ -85,7 +85,35 @@ impl ActivePageTable {
   fn p4_mut(&mut self) -> &mut Table<Level4> {
     unsafe { self.p4.as_mut() }
   }
-
+  pub fn dump(p: &Page) {
+    let apt = unsafe{ActivePageTable::new()};
+    let p4 = apt.p4();
+    let p4_i = p.p4_index();
+    let p3_i = p.p3_index();
+    let p2_i = p.p2_index();
+    let p1_i = p.p1_index();
+    debug!("Pg: {:#018x}", p.start_address());
+    debug!("P4: {:03x}: {:?} ({:?}) {:?}", 
+      p4_i, p4[p4_i], p4[p4_i].real_addr(), p4[p4_i].flags());
+    if let Some(p3) = p4.next_table(p4_i) {
+      debug!("P3: {:03x}: {:?} ({:?}) {:?}", 
+        p3_i, p3[p3_i], p3[p3_i].real_addr(), p3[p3_i].flags());
+      if let Some(p2) = p3.next_table(p3_i) {
+        debug!("P2: {:03x}: {:?} ({:?}) {:?}", 
+          p2_i, p2[p2_i], p2[p2_i].real_addr(), p2[p2_i].flags());
+        if let Some(p1) = p2.next_table(p2_i) {
+          debug!("P1: {:03x}: {:?} ({:?}) {:?}", 
+            p1_i, p1[p1_i], p1[p1_i].real_addr(), p1[p1_i].flags());
+        } else {
+          debug!("P1 not mapped")
+        }
+      } else {
+        debug!("P2 not mapped");
+      }
+    } else {
+      debug!("P3 not mapped");
+    }
+  }
   pub fn translate(&self, vaddr: PageVirtAddr) -> Option<PagePhysAddr> {
     let offset = vaddr % PAGE_SIZE;
     self.translate_page(Page::containing_address(vaddr))
@@ -197,6 +225,12 @@ impl Entry {
   pub fn set_addr(&mut self, pa: PhysAddr, flags: EntryFlags) {
     assert!(pa.as_u64() & !PAGE_ADDR_FILTER == 0);
     self.0 = pa.as_u64() | flags.bits();
+  }
+}
+
+impl ::core::fmt::Debug for Entry {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    f.write_fmt(format_args!("{:#018x}", self.0))
   }
 }
 

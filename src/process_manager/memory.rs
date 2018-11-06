@@ -3,10 +3,17 @@ use ::core::cell::RefCell;
 use ::alloc::rc::Rc;
 use ::alloc::vec::Vec;
 
+#[derive(Clone)]
 pub enum Stack {
   NoStack,
-  UserStack(Rc<RefCell<StackUser>>),
-  KernelStack(Rc<RefCell<StackKernel>>),
+  User(Rc<RefCell<MemoryUser>>),
+  Kernel(Rc<RefCell<MemoryKernel>>),
+}
+
+#[derive(Clone)]
+pub enum Memory {
+  NoMemory,
+  User(Rc<RefCell<MemoryUser>>),
 }
 
 panic_on_drop!(Stack);
@@ -16,34 +23,55 @@ impl Stack {
     Stack::NoStack
   }
   pub fn new_userstack() -> Stack {
-    Stack::UserStack(StackUser::new())
+    Stack::User(MemoryUser::new())
   }
   pub fn new_kstack() -> Stack {
-    Stack::KernelStack(StackKernel::new())
+    Stack::Kernel(MemoryKernel::new())
   }
   pub fn map(&self) {
     match self {
       Stack::NoStack => (),
-      Stack::UserStack(s) => (*s).borrow().map(),
-      Stack::KernelStack(s) => (*s).borrow().map(),
+      Stack::User(s) => (*s).borrow().map(),
+      Stack::Kernel(s) => (*s).borrow().map(),
     }
   }
   pub fn unmap(&self) {
     match self {
       Stack::NoStack => (),
-      Stack::UserStack(s) => (*s).borrow().unmap(),
-      Stack::KernelStack(s) => (*s).borrow().unmap(),
+      Stack::User(s) => (*s).borrow().unmap(),
+      Stack::Kernel(s) => (*s).borrow().unmap(),
     }
   }
 }
 
-pub struct StackUser {
+impl Memory {
+  pub fn new_nomemory() -> Memory {
+    Memory::NoMemory
+  }
+  pub fn new_usermemory() -> Memory {
+    Memory::User(MemoryUser::new())
+  }
+  pub fn map(&self) {
+    match self {
+      Memory::NoMemory => (),
+      Memory::User(s) => (*s).borrow().map(),
+    }
+  }
+  pub fn unmap(&self) {
+    match self {
+      Memory::NoMemory => (),
+      Memory::User(s) => (*s).borrow().map(),
+    }
+  }
+}
+
+pub struct MemoryUser {
   pages: Vec<PhysAddr>,
 }
 
-impl StackUser {
-  fn new() -> Rc<RefCell<StackUser>> {
-    Rc::new(RefCell::new(StackUser{
+impl MemoryUser {
+  fn new() -> Rc<RefCell<MemoryUser>> {
+    Rc::new(RefCell::new(MemoryUser{
       pages: vec!(),
     }))
   }
@@ -65,13 +93,13 @@ impl StackUser {
   }
 }
 
-pub struct StackKernel {
+pub struct MemoryKernel {
   pages: Vec<PhysAddr>,
 }
 
-impl StackKernel {
-  fn new() -> Rc<RefCell<StackKernel>> {
-    Rc::new(RefCell::new(StackKernel{
+impl MemoryKernel {
+  fn new() -> Rc<RefCell<MemoryKernel>> {
+    Rc::new(RefCell::new(MemoryKernel{
       pages: vec!(),
     }))
   }

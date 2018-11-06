@@ -115,8 +115,9 @@ extern "x86-interrupt" fn page_fault(
         PageFaultErrorCode::MALFORMED_TABLE);
     debug!("checking page fault error");
     if malformed_table {
-        error!("page table malformed at {:#018x}", addr);
-        unmap(paddr, 1, MapType::Guard);
+        ::vmem::pagetable::ActivePageTable::dump(&page);
+        //error!("page table malformed at {:#018x}", addr);
+        //unmap(paddr, 1, MapType::Guard);
     }
     if !prot_violation {
         if is_kstack
@@ -130,10 +131,10 @@ extern "x86-interrupt" fn page_fault(
             debug!("mapped, returning...");
             return;
         } else if is_ustack {
-            if instr_fetch {
+            /*if instr_fetch {
                 //TODO: kill task instead
                 panic!("task attempted to run instruction from stack")
-            }
+            }*/
             debug!("mapping user stack page to {:#018x}", page.start_address());
             map_new(paddr, MapType::Stack);
             //TODO: adjust task stack size
@@ -142,7 +143,7 @@ extern "x86-interrupt" fn page_fault(
         } else if page.start_address() == ::vmem::KSTACK_GUARD {
             panic!("stack in kernel stack guard");
         } else {
-            panic!("cannot map userspace yet: {:#018x}", page.start_address());
+            panic!("cannot map: {:#018x}", page.start_address());
         }
     } else {
         if paddr.as_usize() > ::vmem::pagetable::LOW_PAGE_TABLE {

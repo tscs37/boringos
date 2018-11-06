@@ -116,6 +116,9 @@ impl TaskHandle {
   pub const fn from(p: ProcessHandle, x: Handle) -> Self {
     TaskHandle(x, p)
   }
+  pub const fn from_c(p: u64, t: u64) -> Self {
+    TaskHandle(Handle(t), ProcessHandle::from(Handle(p)))
+  }
   pub fn gen(p: ProcessHandle) -> TaskHandle {
     TaskHandle(Handle::gen(), p)
   }
@@ -126,3 +129,6 @@ impl ::core::fmt::Display for TaskHandle {
       f.write_fmt(format_args!("{}:{}", self.0, self.process_handle()))
   }
 }
+
+assert_eq_size!(check_task_handle_size; TaskHandle,    (u64, u64));
+assert_eq_size!(check_proc_handle_size; ProcessHandle, u64);

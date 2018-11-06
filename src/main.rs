@@ -35,6 +35,7 @@ mod bindriver;
 mod version;
 mod vmem;
 mod process_manager;
+mod process_environment;
 mod incproc;
 
 const BOOT_MEMORY_PAGES: usize = 32;

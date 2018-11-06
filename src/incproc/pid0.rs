@@ -1,12 +1,16 @@
 
 #[naked]
 pub fn pid0() {
+  unsafe { asm!(
+    "push rsp"
+    ::::"intel", "volatile") };
   debug!("PID 0 running");
   dump_stack_addr!();
   let initramfs = include_bytes!("../../initramfs.bin");
   debug!("Loading {} byte long initramfs", initramfs.len());
   debug!("Creating Scheduler Task... ");
   let ph = ipc_call!(bos_new_process);
+  debug!("DONE; ph={:?}", ph);
   //TODO:
   proc_yield!(); // Yield once to make sure everything is alright
   debug!("Starting Time Provider...");

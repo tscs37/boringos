@@ -20,22 +20,20 @@ impl Task {
       status: Status::New,
     }
   }
+  pub fn new_nulltask() -> Task {
+    Task {
+      state: State::new_nullstate(),
+      status: Status::New,
+    }
+  }
   pub fn status(&self) -> Status {
     self.status
   }
-  pub fn restore(&mut self) -> ! {
-    self.status = Status::Running;
-    self.state.restore();
-    panic!("returned from state restore");
-  }
-  pub fn restore_new(&mut self) -> ! {
-    self.status = Status::Running;
-    self.state.restore_new();
-    panic!("returned from state restore");
-  }
-  pub fn save_and_clear(&mut self, rsp: usize) {
+  pub fn switch_to(&mut self, next: &mut Task) {
     self.status = Status::Runnable;
-    self.state.save_and_clear(rsp)
+    next.status = Status::Running;
+    self.state.switch_to(&mut next.state);
+    panic!("returned from state restore");
   }
 }
 
