@@ -13,6 +13,7 @@ pub use ::process_manager::task::Task;
 pub use ::process_manager::state::State;
 use ::process_manager::handles::{ProcessHandleRegistry, TaskHandleRegistry};
 use ::process_manager::memory::Stack;
+use ::spin::RwLock;
 
 #[derive(Clone)]
 pub struct Userspace {
@@ -58,12 +59,12 @@ impl Userspace {
 
 #[derive(Clone)]
 pub struct Scheduler {
-  preg: Arc<RefCell<ProcessHandleRegistry>>,
-  treg: Arc<RefCell<TaskHandleRegistry>>,
+  preg: Arc<RwLock<ProcessHandleRegistry>>,
+  treg: Arc<RwLock<TaskHandleRegistry>>,
   scheduler_thandle: TaskHandle,
   pid_provider_thandle: TaskHandle,
   current_task: TaskHandle, //TODO: change for multi-CPU
-  kernel_stack: Arc<RefCell<Stack>>, //TODO: handle multiple kernel stacks
+  kernel_stack: Arc<RwLock<Stack>>, //TODO: handle multiple kernel stacks
 }
 
 use ::alloc::string::String;

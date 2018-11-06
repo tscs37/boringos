@@ -1,6 +1,7 @@
 
 use ::process_manager::state::State;
 
+#[derive(Clone)]
 pub struct Task {
   state: State,
   status: Status,

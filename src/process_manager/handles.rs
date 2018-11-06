@@ -3,6 +3,7 @@ use ::process_manager::{Task,Process};
 use ::alloc::collections::BTreeMap;
 use ::core::cell::RefCell;
 use ::alloc::rc::Rc;
+use ::spin::RwLock;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Handle(u64);
@@ -48,7 +49,7 @@ impl ::core::fmt::Display for Handle {
 
 #[derive(Clone)]
 pub struct ProcessHandleRegistry(BTreeMap<ProcessHandle, 
-  Rc<RefCell<Process>>>);
+  Arc<RwLock<Process>>>);
 
 impl ProcessHandleRegistry {
   pub fn new() -> ProcessHandleRegistry {
@@ -88,7 +89,7 @@ impl ::core::fmt::Display for ProcessHandle {
 
 #[derive(Clone)]
 pub struct TaskHandleRegistry(BTreeMap<TaskHandle, 
-  Rc<RefCell<Task>>>);
+  Arc<RwLock<Task>>>);
 
 
 impl TaskHandleRegistry {
