@@ -1,9 +1,6 @@
 
 #[naked]
 pub fn pid0() {
-  unsafe { asm!(
-    "push rsp"
-    ::::"intel", "volatile") };
   debug!("PID 0 running");
   dump_stack_addr!();
   let initramfs = include_bytes!("../../initramfs.bin");

@@ -16,7 +16,7 @@ pub enum Memory {
   User(Rc<RefCell<MemoryUser>>),
 }
 
-panic_on_drop!(Stack);
+//panic_on_drop!(Stack);
 
 impl Stack {
   pub fn new_nostack() -> Stack {
@@ -76,17 +76,18 @@ impl MemoryUser {
     }))
   }
   fn map(&self) {
+    if self.pages.len() == 0 { return; }
     use ::vmem::mapper::{map,MapType};
     use ::vmem::PhysAddr;
     let base = PhysAddr::new(::vmem::STACK_START as u64)
-      .expect("need base for stack map");
-    debug!("mapping user stack to {}", base);
+      .expect("need base for memory map");
+    debug!("mapping user memory to {}", base);
     map(base, self.pages.clone(), MapType::Stack);
-    debug!("mapping user stack complete");
+    debug!("mapping user memory complete");
   }
   fn unmap(&self) {
     let base = PhysAddr::new(::vmem::STACK_START as u64)
-      .expect("need base for stack unmap");
+      .expect("need base for memory unmap");
     use ::vmem::mapper::{unmap,MapType};
     unmap(base, 16, MapType::Stack);
     panic!("not implemented")
@@ -104,15 +105,16 @@ impl MemoryKernel {
     }))
   }
   fn map(&self) {
+    if self.pages.len() == 0 { return; }
     use ::vmem::mapper::{map,MapType};
     use ::vmem::PhysAddr;
     let base = PhysAddr::new(::vmem::KSTACK_START as u64)
-      .expect("need base for kstack map");
-    debug!("mapping Kernel Stack to {}", base);
+      .expect("need base for kernel memory map");
+    debug!("mapping Kernel Memory to {}", base);
     map(base, self.pages.clone(), MapType::Stack);
-    debug!("kstack mapped")
+    debug!("kernel memory mapped")
   }
   fn unmap(&self) {
-    panic!("kernel stack cannot be unmapped")
+    panic!("kernel memory cannot be unmapped")
   }
 }

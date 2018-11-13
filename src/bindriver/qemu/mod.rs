@@ -1,4 +1,4 @@
-
+#[allow(dead_code)]
 pub unsafe fn qemu_shutdown() {
     use x86_64::instructions::port::Port;
 

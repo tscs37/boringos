@@ -39,33 +39,6 @@ macro_rules! breakpoint {
   };
 }
 
-macro_rules! pop_regs {
-  () => {
-      asm!(
-      "
-      popfq
-      pop r15
-      pop r14
-      pop r13
-      pop r12
-      pop r11
-      pop r10
-      pop r9
-      pop r8
-      pop rbp
-      pop rdi
-      pop rsi
-      pop rdx
-      pop rcx
-      pop rbx
-      pop rax
-      "
-      :::: "intel", "volatile"
-    );
-  }
-}
-
-
 macro_rules! dump_stack_addr {
   () => { debug!("Stack at {:#018x}", stack_addr!()) }
 }
@@ -82,7 +55,7 @@ macro_rules! panic_on_drop {
   ($type_name:ident) => {
     impl Drop for $type_name {
       fn drop(&mut self) {
-        panic!("Resource $type_name marked as panic_on_drop but was dropped");
+        panic!("Resource {} marked as panic_on_drop but was dropped", stringify!($type_name));
       }
     }
   }

@@ -3,8 +3,8 @@ use ::process_manager::state::State;
 
 #[derive(Clone)]
 pub struct Task {
-  state: State,
-  status: Status,
+  pub state: State,
+  pub status: Status,
 }
 
 impl Task {
@@ -27,10 +27,14 @@ impl Task {
       status: Status::New,
     }
   }
+  pub fn state(&mut self) -> &mut State {
+    &mut self.state
+  }
   pub fn status(&self) -> Status {
     self.status
   }
   pub fn switch_to(&mut self, next: &mut Task) {
+    debug!("Switching tasks");
     self.status = Status::Runnable;
     next.status = Status::Running;
     self.state.switch_to(&mut next.state);

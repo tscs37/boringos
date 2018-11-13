@@ -2,7 +2,6 @@
 #![feature(alloc)]
 #![feature(alloc_error_handler)]
 #![feature(allocator_api)]
-#![feature(min_const_fn)]
 #![feature(lang_items)]
 #![feature(const_raw_ptr_to_usize_cast)]
 #![feature(asm)]
@@ -137,8 +136,9 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
   }
   {
     vga_print!("Initializing Process Environment...");
+    ::process_environment::init();
     //TODO: write penv
-    vga_print_red!("[TODO]\n");
+    vga_print_red!("[ OK ]\n");
   }
   
   debug!("entering userspace");

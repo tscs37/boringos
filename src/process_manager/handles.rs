@@ -23,19 +23,17 @@ impl Handle {
     unsafe{
       asm!(
         "
-        mov ecx, 100
+        mov ecx, 1000
         retry_handle_gen:
           rdrand rax
-          jnc .done_handle_gen
-          cmp ecx, 0
-          jz .done_handle_gen
+          jc .done_handle_gen
           loop retry_handle_gen
         .done_handle_gen:
         ":
         "={rax}"(rnd), "={ecx}"(retry)::"rax", "ecx":"intel", "volatile"
       );
     }
-    if retry < 0 { panic!("could not get random number")}
+    if retry == 0 { panic!("could not get random number")}
     Handle(rnd)
   }
 }
@@ -88,17 +86,17 @@ impl ::core::fmt::Display for ProcessHandle {
 
 #[derive(Clone)]
 pub struct TaskHandleRegistry(BTreeMap<TaskHandle, 
-  Arc<RwLock<Task>>>);
+  Arc<*mut Task>>);
 
 
 impl TaskHandleRegistry {
   pub fn new() -> TaskHandleRegistry {
     TaskHandleRegistry(BTreeMap::new())
   }
-  pub fn insert(&mut self, th: &TaskHandle, t: Task) {
-    self.0.insert(*th, Arc::new(RwLock::new(t)));
+  pub fn insert(&mut self, th: &TaskHandle, t: &mut Task) {
+    self.0.insert(*th, Arc::new(t as *mut _));
   }
-  pub fn resolve(&self, th: &TaskHandle) -> Option<&Arc<RwLock<Task>>> {
+  pub fn resolve(&self, th: &TaskHandle) -> Option<&Arc<*mut Task>> {
     self.0.get(th)
   }
 }
@@ -122,11 +120,14 @@ impl TaskHandle {
   pub fn gen(p: ProcessHandle) -> TaskHandle {
     TaskHandle(Handle::gen(), p)
   }
+  pub fn is_scheduler(&self) -> bool {
+    self.0.into() == 0 && self.process_handle().into().into() == 0
+  }
 }
 
 impl ::core::fmt::Display for TaskHandle {
     fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-      f.write_fmt(format_args!("{}:{}", self.0, self.process_handle()))
+      f.write_fmt(format_args!("{}:{}", self.process_handle(), self.0))
   }
 }
 

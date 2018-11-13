@@ -97,7 +97,10 @@ extern "x86-interrupt" fn page_fault(
 ) {
     debug!("Page Fault occured, handling in kernel");
     let addr: usize;
-    unsafe { asm!("mov rax, cr2":"={eax}"(addr)::"eax":"intel", "volatile") };
+    unsafe { asm!("
+        mov rbx, cr2
+        mov $0, rbx
+        ":"=r"(addr)::"rbx":"intel", "volatile") };
     use vmem::pagetable::Page;
     use vmem::{mapper::map_new, mapper::MapType, 
         PhysAddr, PAGE_SIZE};
@@ -114,10 +117,14 @@ extern "x86-interrupt" fn page_fault(
     let malformed_table = error_code.contains(
         PageFaultErrorCode::MALFORMED_TABLE);
     debug!("checking page fault error");
+    ::vmem::pagetable::ActivePageTable::dump(&page);
     if malformed_table {
-        ::vmem::pagetable::ActivePageTable::dump(&page);
         //error!("page table malformed at {:#018x}", addr);
         //unmap(paddr, 1, MapType::Guard);
+    }
+    if page.start_address() > ::vmem::PAGE_TABLE_LO {
+        error!("page fault should not occur in page table area");
+        panic!();
     }
     if !prot_violation {
         if is_kstack
@@ -176,6 +183,6 @@ extern "x86-interrupt" fn page_fault(
 extern "x86-interrupt" fn timer_interrupt(
     _stack_frame: &mut ExceptionStackFrame)
 {
-    debug!("timer interrupt");
+    //debug!("timer interrupt");
     ::bindriver::cpu::pic::end_of_interrupt(TIMER_INTERRUPT_ID);
 }
