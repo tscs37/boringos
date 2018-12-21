@@ -16,8 +16,6 @@ pub enum Memory {
   User(Rc<RefCell<MemoryUser>>),
 }
 
-//panic_on_drop!(Stack);
-
 impl Stack {
   pub fn new_nostack() -> Stack {
     Stack::NoStack
@@ -79,6 +77,7 @@ impl MemoryUser {
     if self.pages.len() == 0 { return; }
     use ::vmem::mapper::{map,MapType};
     use ::vmem::PhysAddr;
+    debug!("mapping user memory");
     let base = PhysAddr::new(::vmem::STACK_START as u64)
       .expect("need base for memory map");
     debug!("mapping user memory to {}", base);
@@ -108,6 +107,7 @@ impl MemoryKernel {
     if self.pages.len() == 0 { return; }
     use ::vmem::mapper::{map,MapType};
     use ::vmem::PhysAddr;
+    debug!("mapping kernel memory");
     let base = PhysAddr::new(::vmem::KSTACK_START as u64)
       .expect("need base for kernel memory map");
     debug!("mapping Kernel Memory to {}", base);

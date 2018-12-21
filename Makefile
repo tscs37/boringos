@@ -4,11 +4,12 @@ TARGET = x86_64-boringoscore
 CRATE = boringos
 QEMU_MEMORY = 512
 QEMU_PLATFORM = system-x86_64
+BOOTIMG_FILE = target/$(TARGET)/debug/bootimage-$(CRATE).bin
 QEMU_OPTIONS = -net none -m $(QEMU_MEMORY) \
 	-vga cirrus --enable-kvm --cpu host \
-	-drive if=ide,format=raw,file=target/$(TARGET)/debug/bootimage-$(CRATE).bin \
+	-drive if=ide,format=raw,file=$(BOOTIMG_FILE) \
 	-device isa-debug-exit,iobase=0xf4,iosize=0x04 \
-	-serial mon:stdio --no-reboot
+	-serial mon:stdio --no-reboot -d cpu_reset,int
 
 all: kernel bootimage qemu
 
@@ -39,10 +40,7 @@ bochs: bootimage
 	bochs -f bochs.conf
 
 debug: bootimage
-	qemu-$(QEMU_PLATFORM) $(QEMU_OPTIONS) -S -s || exit 0
+	@qemu-$(QEMU_PLATFORM) $(QEMU_OPTIONS) -S -s || exit 0
 
 gdb: bootimage
-	gdb -q target/$(TARGET)/debug/$(CRATE) -x script.gdb
-
-no_vga: bootimage
-	qemu-$(QEMU_PLATFORM) $(QEMU_OPTIONS) -display none || exit 0
+	@gdb "$(BOOTIMG_FILE)" -ex "target remote :1234"

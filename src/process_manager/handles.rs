@@ -1,8 +1,7 @@
 
-use ::process_manager::{Task,Process};
+use ::process_manager::Task;
 use ::alloc::collections::BTreeMap;
 use ::alloc::sync::Arc;
-use ::spin::RwLock;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Handle(u64);
@@ -45,46 +44,6 @@ impl ::core::fmt::Display for Handle {
 }
 
 #[derive(Clone)]
-pub struct ProcessHandleRegistry(BTreeMap<ProcessHandle, 
-  Arc<RwLock<Process>>>);
-
-impl ProcessHandleRegistry {
-  pub fn new() -> ProcessHandleRegistry {
-    ProcessHandleRegistry(BTreeMap::new())
-  }
-  pub fn insert(&mut self, ph: &ProcessHandle, p: Process) {
-    self.0.insert(*ph, Arc::new(RwLock::new(p)));
-  }
-  pub fn resolve(&self, ph: &ProcessHandle) -> Option<&Arc<RwLock<Process>>> {
-    self.0.get(ph)
-  }
-  pub fn resolve_task(&self, th: &TaskHandle) -> Option<&Arc<RwLock<Process>>> {
-    self.resolve(&th.process_handle())
-  }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub struct ProcessHandle(Handle);
-
-impl ProcessHandle {
-  pub const fn into(self) -> Handle {
-    self.0
-  }
-  pub const fn from(x: Handle) -> Self {
-    ProcessHandle(x)
-  }
-  pub fn gen() -> ProcessHandle {
-    ProcessHandle(Handle::gen())
-  }
-}
-
-impl ::core::fmt::Display for ProcessHandle {
-    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-      f.write_fmt(format_args!("{}", self.0))
-  }
-}
-
-#[derive(Clone)]
 pub struct TaskHandleRegistry(BTreeMap<TaskHandle, 
   Arc<*mut Task>>);
 
@@ -102,34 +61,33 @@ impl TaskHandleRegistry {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub struct TaskHandle(Handle, ProcessHandle);
+pub struct TaskHandle(Handle);
 
 impl TaskHandle {
-  pub fn process_handle(&self) -> ProcessHandle {
-    self.1
-  }
   pub const fn into(self) -> Handle {
     self.0
   }
-  pub const fn from(p: ProcessHandle, x: Handle) -> Self {
-    TaskHandle(x, p)
+  pub const fn from(x: Handle) -> Self {
+    TaskHandle(x)
   }
-  pub const fn from_c(p: u64, t: u64) -> Self {
-    TaskHandle(Handle(t), ProcessHandle::from(Handle(p)))
+  pub const fn from_c(t: u64) -> Self {
+    TaskHandle(Handle(t))
   }
-  pub fn gen(p: ProcessHandle) -> TaskHandle {
-    TaskHandle(Handle::gen(), p)
+  pub fn gen() -> TaskHandle {
+    TaskHandle(Handle::gen())
   }
   pub fn is_scheduler(&self) -> bool {
-    self.0.into() == 0 && self.process_handle().into().into() == 0
+    self.0.into() == 0
+  }
+  pub fn zero() -> TaskHandle {
+    Self::from(Handle(0))
   }
 }
 
 impl ::core::fmt::Display for TaskHandle {
     fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-      f.write_fmt(format_args!("{}:{}", self.process_handle(), self.0))
+      f.write_fmt(format_args!("{}", self.0))
   }
 }
 
-assert_eq_size!(check_task_handle_size; TaskHandle,    (u64, u64));
-assert_eq_size!(check_proc_handle_size; ProcessHandle, u64);
+assert_eq_size!(check_task_handle_size; TaskHandle, u64);

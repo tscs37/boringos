@@ -1,11 +1,10 @@
 use ::vmem::PhysAddr;
 
-#[derive(Clone)]
 pub struct State {
   active: bool,
   mode: CPUMode,
   start_rip: PhysAddr,
-  stack: ::process_manager::memory::Stack,
+  stack: crate::process_manager::memory::Stack,
   memory: ::process_manager::memory::Memory,
   rsp: usize,
   rbp: usize,
@@ -13,19 +12,37 @@ pub struct State {
 
 fn null_fn() { panic!("entered null fn"); }
 
-impl State {
-  pub fn new_kernelstate(ptr: fn()) -> State {
+impl Clone for State {
+  fn clone(&self) -> Self {
     State{
       active: false,
+      mode: self.mode,
+      start_rip: self.start_rip,
+      stack: self.stack,
+      memory: self.memory,
+      rsp: self.rsp,
+      rbp: self.rbp,
+    }
+  }
+}
+
+impl State {
+  pub fn new_kernelstate(ptr: fn()) -> State {
+    debug!("new state with RIP: {:#018x}", ptr as usize);
+    let s = State{
+      active: false,
       mode: CPUMode::Kernel,
-      start_rip: PhysAddr::new(ptr as *mut u8 as u64).expect("kernelstate needs function pointer"),
+      start_rip: PhysAddr::new(ptr as u64).expect("kernelstate needs function pointer"),
       stack: super::memory::Stack::new_userstack(),
       memory: super::memory::Memory::new_usermemory(),
       rsp: ::vmem::STACK_START,
       rbp: ::vmem::STACK_START,
-    }
+    };
+    debug!("RIP={}", s.start_rip);
+    s
   }
   pub fn new_nullstate() -> State {
+    warn!("created nullstate");
     State{
       active: false,
       mode: CPUMode::Kernel,
@@ -35,6 +52,9 @@ impl State {
       rsp: ::vmem::STACK_START,
       rbp: ::vmem::STACK_START,
     }
+  }
+  pub fn activate(&mut self) {
+    self.active = true;
   }
   #[cold]
   #[inline(never)]
@@ -100,12 +120,12 @@ impl State {
   }
 }
 
-#[inline(never)]
-#[cold]
-pub unsafe fn switch_to(next_task: &mut super::Task) -> ! {
-  let next = next_task.state();
+pub unsafe fn switch_to(next_task: *mut super::Task) -> ! {
+  let next = (*next_task).get_state_and_activate();
+  if next.mode == CPUMode::Null {
+    panic!("attempted to run null state");
+  }
   debug!("manual switch to rip = {}", next.start_rip);
-  next.active = true;
   next.stack.map();
   next.memory.map();
   debug!("mapped memory, switching stack and clearing registers");
@@ -139,8 +159,9 @@ pub unsafe fn switch_to(next_task: &mut super::Task) -> ! {
   panic!("Returned somehow from non-cooperative switch-to");
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum CPUMode {
   Kernel,
+  Null, // Cannot run
   WASM //TODO: convert to Interpreter(InterpreterHandle)
 }

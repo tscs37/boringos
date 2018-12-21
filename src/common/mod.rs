@@ -29,8 +29,8 @@ pub fn release_page(pa: ::vmem::PhysAddr) {
 
 #[no_mangle]
 #[inline(never)]
-pub extern "C" fn yield_to(t: u64, p: u64) {
-  let th = TaskHandle::from_c(t, p);
+pub extern "C" fn yield_to(t: u64) {
+  let th = TaskHandle::from_c(t);
   debug!("Yielding to task {:?}", th);
   use ::process_manager::TaskHandle;
   ::userspace().in_scheduler_mut_spin(|mut sched| sched.yield_to(Some(th)));
