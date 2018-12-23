@@ -6,6 +6,7 @@
 #![feature(const_raw_ptr_to_usize_cast)]
 #![feature(asm)]
 #![feature(naked_functions)]
+#![feature(integer_atomics)]
 #![no_std]
 #![no_main]
 
@@ -17,13 +18,6 @@ extern crate static_assertions;
 extern crate bitflags;
 #[macro_use]
 extern crate log;
-extern crate bootloader;
-extern crate volatile;
-extern crate spin;
-extern crate uart_16550;
-extern crate x86_64;
-extern crate slabmalloc;
-extern crate raw_cpuid;
 #[macro_use]
 extern crate alloc;
 
@@ -31,29 +25,29 @@ extern crate alloc;
 mod common;
 #[macro_use]
 mod bindriver;
+mod inc;
+mod process_environment;
+mod process_manager;
 mod version;
 mod vmem;
-mod process_manager;
-mod process_environment;
-mod incproc;
 
 const BOOT_MEMORY_PAGES: usize = 32;
 
+use self::alloc::sync::Arc;
+use self::process_manager::Userspace;
+use self::vmem::PageManager;
+use core::cell::RefCell;
 use slabmalloc::SafeZoneAllocator;
 use spin::Mutex;
-use vmem::PageManager;
-use ::process_manager::Userspace;
-use ::core::cell::RefCell;
-use ::alloc::sync::Arc;
 
-pub use ::common::*;
+pub use crate::common::*;
 
 pub static PAGER: Mutex<PageManager> = Mutex::new(PageManager {
-  first_page_mem: ::vmem::StaticPage::new(),
-  first_range_mem: ::vmem::StaticPage::new(),
-  boot_pages: [::vmem::StaticPage::new(); BOOT_MEMORY_PAGES],
+  first_page_mem: crate::vmem::StaticPage::new(),
+  first_range_mem: crate::vmem::StaticPage::new(),
+  boot_pages: [crate::vmem::StaticPage::new(); BOOT_MEMORY_PAGES],
   use_boot_memory: true,
-  pages: ::vmem::pagelist::PageListLink::None,
+  pages: crate::vmem::pagelist::PageListLink::None,
 });
 #[global_allocator]
 static MEM_PROVIDER: SafeZoneAllocator = SafeZoneAllocator::new(&PAGER);
@@ -67,12 +61,14 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
   {
     vga_print!("Initializing VMEM...");
     debug!("Probing existing memory ...");
-    debug!("P4CTA: {:#018x}\n", ::vmem::pagetable::P4 as u64);
+    debug!("P4CTA: {:#018x}\n", crate::vmem::pagetable::P4 as u64);
     debug!("P4PTA: {:#018x}\n", boot_info.p4_table_addr);
-    assert!(boot_info.p4_table_addr == ::vmem::pagetable::P4 as u64);
+    assert!(boot_info.p4_table_addr == crate::vmem::pagetable::P4 as u64);
     {
       debug!("Initializing VMEM Slab Allocator...");
-      unsafe { pager().init_page_store(); }
+      unsafe {
+        pager().init_page_store();
+      }
       debug!("Slab allocator initialized, adding memory");
       let mmap = &boot_info.memory_map;
       let mut usable_memory = 0;
@@ -81,29 +77,43 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
       for x in 0..mmap_entries.len() {
         let entry = mmap_entries[x];
         let range = entry.range;
-        debug!("MMAPE: {:#04x} {:#016x}-{:#016x}: {:?}\n", x,
-            range.start_addr(), range.end_addr(), entry.region_type);
+        debug!(
+          "MMAPE: {:#04x} {:#016x}-{:#016x}: {:?}\n",
+          x,
+          range.start_addr(),
+          range.end_addr(),
+          entry.region_type
+        );
         use bootloader::bootinfo::MemoryRegionType;
         match entry.region_type {
-          MemoryRegionType::Usable => { 
+          MemoryRegionType::Usable => {
             let size = range.end_addr() - range.start_addr();
-            debug!("Adding MMAPE {:#04x} to usable memory... {} KiBytes, {} Pages", x, size / 1024, size / 4096);
+            debug!(
+              "Adding MMAPE {:#04x} to usable memory... {} KiBytes, {} Pages",
+              x,
+              size / 1024,
+              size / 4096
+            );
             usable_memory += size;
-            unsafe { 
+            unsafe {
               pager().add_memory(
-                ::vmem::pagelist::PhysAddr::new_unchecked(range.start_addr()),
-                (size / 4096) as usize - 1
+                crate::vmem::pagelist::PhysAddr::new_unchecked(range.start_addr()),
+                (size / 4096) as usize - 1,
               );
               pager().use_boot_memory = false;
             };
-          },
+          }
           _ => {}
         }
       }
-      debug!("Total usable memory: {:16} KiB, {:8} MiB", usable_memory / 1024, 
-        usable_memory / 1024 / 1024);
+      debug!(
+        "Total usable memory: {:16} KiB, {:8} MiB",
+        usable_memory / 1024,
+        usable_memory / 1024 / 1024
+      );
       let free_memory = pager().free_memory();
-      debug!("Available memory: {} Bytes, {} KiB, {} MiB, {} Pages", 
+      debug!(
+        "Available memory: {} Bytes, {} KiB, {} MiB, {} Pages",
         free_memory,
         free_memory / 1024,
         free_memory / 1024 / 1024,
@@ -117,9 +127,8 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
     unsafe { USERSPACE = Some(Arc::new(RefCell::new(Userspace::new()))) }
     let us = userspace();
     {
-      use ::alloc::string::String;
       us.in_scheduler_mut_spin(|mut sched| {
-        let pid0h = sched.new_kproc(String::from("pid0"), ::incproc::pid0);
+        let pid0h = sched.new_elfproc("pid0", crate::inc::PID0);
         match pid0h {
           Ok(pid0h) => {
             sched.register_scheduler(&pid0h);
@@ -136,14 +145,16 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
   }
   {
     vga_print!("Initializing Process Environment...");
-    ::process_environment::init();
+    crate::process_environment::init();
     //TODO: write penv
     vga_print_red!("[ OK ]\n");
   }
-  
+
   debug!("entering userspace");
 
   userspace().enter();
+
+  panic!("left userspace")
 }
 
 use core::panic::PanicInfo;
@@ -170,7 +181,10 @@ pub fn alloc_error(layout: core::alloc::Layout) -> ! {
   error!("Allocation Error: {} bytes", layout.size());
   vga_print_red!("\n\n===== PANIC OCCURED IN KERNEL =====\n");
   vga_print_red!("\n\n===== MEMORY SUBSYSTEM ERROR  =====\n");
-  vga_print_red!("Attempted to allocate {} bytes, vmem subsystem returned error\n", layout.size());
+  vga_print_red!(
+    "Attempted to allocate {} bytes, vmem subsystem returned error\n",
+    layout.size()
+  );
 
   hlt_cpu!();
 }

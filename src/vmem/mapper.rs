@@ -1,17 +1,20 @@
-use ::vmem::PhysAddr;
-use ::vmem::PAGE_SIZE;
-use ::vmem::pagetable::Page;
-use ::vmem::pagetable::{ActivePageTable,EntryFlags};
-use ::process_manager::TaskHandle;
-use ::alloc::vec::Vec;
+use crate::vmem::PhysAddr;
+use crate::vmem::PAGE_SIZE;
+use crate::vmem::pagetable::Page;
+use crate::vmem::pagetable::{ActivePageTable,EntryFlags};
+use crate::process_manager::TaskHandle;
+use alloc::vec::Vec;
 
+#[derive(PartialEq, Debug)]
 pub enum MapType {
   Stack, // Stack Page, No Execute
   Data, // Data Page, No Execute
   Code, // Code Page, No Write
+  ReadOnly, // Data Page, No Write
   Managed(TaskHandle), // Memory available via other process
   ShMem(TaskHandle), // Memory shared to other process
   Guard, // No Execute, No Read+Write
+  Zero, // Map No Execute, No RW Page, share page
 }
 
 impl MapType {
@@ -20,18 +23,32 @@ impl MapType {
       MapType::Stack => EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
       MapType::Data => EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
       MapType::Code => EntryFlags::PRESENT,
+      MapType::ReadOnly => EntryFlags::NO_EXECUTE,
       MapType::Managed(_) => EntryFlags::OS_EXTERNAL,
       MapType::ShMem(_) => EntryFlags::OS_EXTERNAL,
       MapType::Guard => EntryFlags::NO_EXECUTE,
+      MapType::Zero => EntryFlags::NO_EXECUTE,
     }
   }
 }
 
-pub fn map_new(base_addr: PhysAddr, mt:MapType) {
+pub fn map_new(base_addr: PhysAddr, mt:MapType) -> PhysAddr {
   let mut apt = unsafe { ActivePageTable::new() };
-  let pm = &mut ::pager();
+  let pm = &mut crate::pager();
   let flags = mt.flags();
-  apt.map(Page::containing_address(base_addr.as_usize()), flags, pm);
+  debug!("mapping new page to {}", base_addr);
+  apt.map(Page::containing_address(base_addr.as_usize()), flags, pm)
+}
+
+pub fn map_zero(addr: PhysAddr) {
+  // grab zero_page first, otherwise we get a problem when we grab the lock on the APT
+  // below!
+  let zero_page = crate::KERNEL_INFO.read().get_zero_page_addr();
+  let mut apt = unsafe { ActivePageTable::new() };
+  let pm = &mut crate::pager();
+  let flags = MapType::Zero.flags();
+  debug!("mapping page {} to zero page", addr);
+  apt.map_to(Page::containing_address(addr.as_usize()), zero_page, flags, pm)
 }
 
 pub fn is_mapped(addr: PhysAddr) -> bool {
@@ -41,51 +58,27 @@ pub fn is_mapped(addr: PhysAddr) -> bool {
 
 pub fn map(base_addr: PhysAddr, pl: Vec<PhysAddr>, mt: MapType) {
   let mut apt = unsafe { ActivePageTable::new() };
-  let pm = &mut ::pager();
+  let pm = &mut crate::pager();
   let flags = mt.flags();
   for x in 0..pl.len() {
-    let addr = base_addr.as_usize() - x * PAGE_SIZE;
+    let addr = if mt == MapType::Stack {
+      base_addr.as_usize() - x * PAGE_SIZE
+    } else {
+      base_addr.as_usize() + x * PAGE_SIZE
+    };
     apt.map_to(Page::containing_address(addr), pl[x], flags, pm);
-  };
-  match mt {
-    MapType::Stack => {
-      /*let guard_addr = unsafe { PhysAddr::new_unchecked(
-        base_addr.as_u64() + 1 * PAGE_SIZE as u64
-      )};
-      let guard_addr_op = unsafe { PhysAddr::new_unchecked(
-        base_addr.as_u64() - ((pl.len() + 1) * PAGE_SIZE) as u64
-      )};
-      let guard_map = unsafe { vec!(PhysAddr::new_unchecked(
-        ::vmem::GUARD_PAGE as u64 & ::vmem::PAGE_ADDR_FILTER
-      )) };*/
-      //debug!("map stackunderflow guard page to {}", guard_addr);
-      //unmap(guard_addr, 1, MapType::Guard);
-      //debug!("map stackoverflow guard page to {}", guard_addr_op);
-      //unmap(guard_addr_op, 1, MapType::Guard);
-    }
-    _ => (),
   };
 }
 
 pub fn unmap(base_addr: PhysAddr, pl_size: usize, mt: MapType) {
   let mut apt = unsafe { ActivePageTable::new() };
-  let pm = &mut ::pager();
+  let pm = &mut crate::pager();
   for x in 0..pl_size {
-    let addr = base_addr.as_usize() - x * PAGE_SIZE;
+    let addr = if mt == MapType::Stack {
+      base_addr.as_usize() - x * PAGE_SIZE
+    } else {
+      base_addr.as_usize() + x * PAGE_SIZE
+    };
     apt.unmap(Page::containing_address(addr), pm);
-  }
-  match mt {
-    MapType::Stack => {
-      /*let guard_addr = unsafe { PhysAddr::new_unchecked(
-        base_addr.as_u64() + PAGE_SIZE as u64) };
-      let guard_addr_op = unsafe { PhysAddr::new_unchecked(
-        base_addr.as_u64() - ((pl_size + 1) * PAGE_SIZE) as u64)
-      };*/
-      //trace!("unmap stackunderflow guard page");
-      //unmap(guard_addr, 1, MapType::Guard);
-      //trace!("unmap stackoverflow guard page");
-      //unmap(guard_addr_op, 1, MapType::Guard);
-    },
-    _ => (),
   }
 }

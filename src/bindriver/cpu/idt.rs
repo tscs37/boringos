@@ -1,11 +1,11 @@
 extern crate x86_64;
+use crate::bindriver::cpu::pic::PIC_1_OFFSET;
 use x86_64::structures::idt::*;
-use ::bindriver::cpu::pic::PIC_1_OFFSET;
 pub const TIMER_INTERRUPT_ID: u8 = PIC_1_OFFSET;
 
 fn crack_locks() {
-    unsafe { ::bindriver::serial::SERIAL1.force_unlock() }
-    unsafe { ::bindriver::vga_buffer::WRITER.force_unlock() }
+    unsafe { crate::bindriver::serial::SERIAL1.force_unlock() }
+    unsafe { crate::bindriver::vga_buffer::WRITER.force_unlock() }
 }
 
 macro_rules! busy_intr_handler {
@@ -22,7 +22,12 @@ macro_rules! busy_intr_handle_errcode {
     ($name:ident) => {
         extern "x86-interrupt" fn $name(stack_frame: &mut ExceptionStackFrame, err: u64) {
             crack_locks();
-            debug!("Interrupt {} ({:#018x}):\n{:?}", stringify!($name), err, stack_frame);
+            debug!(
+                "Interrupt {} ({:#018x}):\n{:?}",
+                stringify!($name),
+                err,
+                stack_frame
+            );
             hlt_cpu!();
         }
     };
@@ -33,7 +38,7 @@ macro_rules! intr {
         unsafe {
             $idt.$name
                 .set_handler_fn($name)
-                .set_stack_index(::bindriver::cpu::gdt::INTR_IST_INDEX);
+                .set_stack_index(crate::bindriver::cpu::gdt::INTR_IST_INDEX);
         }
     };
 }
@@ -55,8 +60,7 @@ lazy_static! {
         intr!(idt, general_protection_fault);
         intr!(idt, page_fault);
         intr!(idt, machine_check);
-        idt[usize::from(TIMER_INTERRUPT_ID)]
-            .set_handler_fn(timer_interrupt);
+        idt[usize::from(TIMER_INTERRUPT_ID)].set_handler_fn(timer_interrupt);
         idt
     };
 }
@@ -97,38 +101,45 @@ extern "x86-interrupt" fn page_fault(
 ) {
     debug!("Page Fault occured, handling in kernel");
     let addr: usize;
-    unsafe { asm!("
+    unsafe {
+        asm!("
         mov rbx, cr2
         mov $0, rbx
-        ":"=r"(addr)::"rbx":"intel", "volatile") };
-    use vmem::pagetable::Page;
-    use vmem::{mapper::map_new, mapper::MapType, 
-        PhysAddr, PAGE_SIZE};
+        ":"=r"(addr)::"rbx":"intel", "volatile")
+    };
+    use crate::vmem::pagetable::Page;
+    use crate::vmem::{mapper::map_new, mapper::MapType, PhysAddr, PAGE_SIZE};
     let page = Page::containing_address(addr);
     let paddr = unsafe { PhysAddr::new_unchecked(page.start_address() as u64) };
-    let is_kstack = page.start_address() >= ::vmem::KSTACK_END
-            && page.start_address() <= ::vmem::KSTACK_START + PAGE_SIZE;
-    let is_ustack = page.start_address() >= ::vmem::STACK_END 
-            && page.start_address() <= ::vmem::STACK_START + PAGE_SIZE;
-    let prot_violation = error_code.contains(
-        PageFaultErrorCode::PROTECTION_VIOLATION);
-    let instr_fetch = error_code.contains(
-        PageFaultErrorCode::INSTRUCTION_FETCH);
-    let malformed_table = error_code.contains(
-        PageFaultErrorCode::MALFORMED_TABLE);
-    debug!("checking page fault error");
-    ::vmem::pagetable::ActivePageTable::dump(&page);
-    if malformed_table {
-        //error!("page table malformed at {:#018x}", addr);
-        //unmap(paddr, 1, MapType::Guard);
+    let is_kstack = page.start_address() >= crate::vmem::KSTACK_END
+        && page.start_address() <= crate::vmem::KSTACK_START + PAGE_SIZE;
+    let is_ustack = page.start_address() >= crate::vmem::STACK_END
+        && page.start_address() <= crate::vmem::STACK_START + PAGE_SIZE;
+    let is_bsspage = page.start_address() >= crate::vmem::BSS_START
+        && page.start_address() <= crate::vmem::BSS_END;
+    let is_codepage = page.start_address() >= crate::vmem::CODE_START
+        && page.start_address() <= crate::vmem::CODE_END;
+    let prot_violation = error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION);
+    let instr_fetch = error_code.contains(PageFaultErrorCode::INSTRUCTION_FETCH);
+    let malformed_table = error_code.contains(PageFaultErrorCode::MALFORMED_TABLE);
+    debug!("checking page fault error, code: {:08x}", error_code);
+    if page.start_address() == 0xfffffffffffff000 || page.start_address() == 0 {
+        panic!(
+            "critical page fault in page table area or zero memory: {:#018x}",
+            page.start_address()
+        );
     }
-    if page.start_address() > ::vmem::PAGE_TABLE_LO {
+    crate::vmem::pagetable::ActivePageTable::dump(&page);
+    if malformed_table {
+        error!("page table malformed at {:#018x}", addr);
+        panic!()
+    }
+    if page.start_address() > crate::vmem::PAGE_TABLE_LO {
         error!("page fault should not occur in page table area");
         panic!();
     }
     if !prot_violation {
-        if is_kstack
-        {
+        if is_kstack {
             if instr_fetch {
                 panic!("kernel attempted to run instruction from stack");
             }
@@ -147,15 +158,46 @@ extern "x86-interrupt" fn page_fault(
             //TODO: adjust task stack size
             debug!("mapped, returning...");
             return;
-        } else if page.start_address() == ::vmem::KSTACK_GUARD {
+        } else if page.start_address() == crate::vmem::KSTACK_GUARD {
             panic!("stack in kernel stack guard");
+        } else if is_codepage {
+            if instr_fetch {
+                // Doesn't work?
+                //panic!("task could not execute in executable memory");
+            }
+            //TODO: check paging mode for paging new task
+            debug!("page fault in user code memory, checking if kernel is creating new task");
+            if crate::KERNEL_INFO.write().mapping_task_image(None) {
+                debug!("checking if the kernel touched memory correctly");
+                let expected_paddr = PhysAddr::new_usize_or_abort(
+                    crate::vmem::CODE_START
+                        + (crate::vmem::PAGE_SIZE
+                            * (crate::KERNEL_INFO.read().get_code_memory_ref_size() + 1)),
+                );
+                if expected_paddr != paddr {
+                    error!(
+                        "wanted kernel to touch {} but it touched {}",
+                        expected_paddr, paddr
+                    );
+                    panic!("kernel touched code memory early, that's nasty");
+                }
+                let new_page = map_new(paddr, MapType::Data);
+                debug!(
+                    "mapped new code memory, notifying kernel for page {}<->{}",
+                    new_page, paddr
+                );
+                crate::KERNEL_INFO.write().add_code_page(new_page);
+                return;
+            } else {
+                panic!("tried to access code memory outside mapping zone");
+            }
         } else {
             panic!("cannot map: {:#018x}", page.start_address());
         }
     } else {
-        if paddr.as_usize() > ::vmem::pagetable::LOW_PAGE_TABLE {
+        if paddr.as_usize() > crate::vmem::pagetable::LOW_PAGE_TABLE {
             debug!("page fault in page table area, checking if mapped...");
-            if ::vmem::mapper::is_mapped(paddr) {
+            if crate::vmem::mapper::is_mapped(paddr) {
                 panic!("page fault in mapped page table");
             } else {
                 panic!("page fault in unmapped page table");
@@ -180,9 +222,7 @@ extern "x86-interrupt" fn page_fault(
     }
 }
 
-extern "x86-interrupt" fn timer_interrupt(
-    _stack_frame: &mut ExceptionStackFrame)
-{
+extern "x86-interrupt" fn timer_interrupt(_stack_frame: &mut ExceptionStackFrame) {
     //debug!("timer interrupt");
-    ::bindriver::cpu::pic::end_of_interrupt(TIMER_INTERRUPT_ID);
+    crate::bindriver::cpu::pic::end_of_interrupt(TIMER_INTERRUPT_ID);
 }

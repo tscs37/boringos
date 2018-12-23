@@ -13,10 +13,18 @@
   "features": "-mmx,-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-3dnow,-3dnowa,-avx,-avx2,+soft-float",
   "disable-redzone": true,
   "eliminate-frame-pointer": false,
-  "relocation-model": "static",
   "code-model": "kernel",
   "has-rpath": false,
   "no-compiler-rt": true,
-  "position-independent-executable": false,
-  "has-elf-tls": false
+  "position-independent-executable": true,
+  "has-elf-tls": false,
+  "exe_suffix": "bos-elf",
+  "pre-link-args": {
+    "ld.lld": [
+      "--entry=main", 
+      "--Tdata=0x0000020000000000",
+      "--Tbss=0x000000f000000000",
+      "--Ttext=0x0000000001020000"
+    ]
+  }
 }

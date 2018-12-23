@@ -1,19 +1,106 @@
-use ::vmem::PhysAddr;
-use ::core::cell::RefCell;
-use ::alloc::rc::Rc;
-use ::alloc::vec::Vec;
+use alloc::boxed::Box;
+use alloc::rc::Rc;
+use alloc::vec::Vec;
+use core::cell::RefCell;
+use crate::vmem::mapper::{map, map_zero, unmap, MapType};
+use crate::vmem::PhysAddr;
 
 #[derive(Clone)]
-pub enum Stack {
-  NoStack,
-  User(Rc<RefCell<MemoryUser>>),
-  Kernel(Rc<RefCell<MemoryKernel>>),
+pub struct MemoryUserRef(*mut Rc<RefCell<MemoryUser>>);
+
+impl core::ops::Deref for MemoryUserRef {
+  type Target = RefCell<MemoryUser>;
+
+  fn deref(&self) -> &RefCell<MemoryUser> {
+    unsafe { (*self.0).deref() }
+  }
+}
+
+impl core::fmt::Debug for MemoryUserRef {
+  fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    write!(f, "MUR:{:018x}=>{:?}", self.0 as usize, *self.borrow())
+  }
+}
+
+impl MemoryUserRef {
+  pub fn new() -> Self {
+    let first_page = crate::common::alloc_page().expect("could not spawn page for user memory");
+    let second_page = crate::common::alloc_page().expect("could not spawn page for user memory");
+    let data = Box::new(Rc::new(RefCell::new(MemoryUser {
+      pages: vec![first_page, second_page],
+      zero_page_offset: 0,
+    })));
+    let ptr = Box::into_raw(data);
+    assert!(ptr as usize != 0, "memory user reference null pointer");
+    MemoryUserRef(ptr)
+  }
+  pub fn new_empty() -> Self {
+    let data = Box::new(Rc::new(RefCell::new(MemoryUser {
+      pages: vec![],
+      zero_page_offset: 0,
+    })));
+    let ptr = Box::into_raw(data);
+    assert!(ptr as usize != 0, "memory user reference null pointer");
+    MemoryUserRef(ptr)
+  }
+  pub fn from(v: *mut Rc<RefCell<MemoryUser>>) -> MemoryUserRef {
+    MemoryUserRef(v)
+  }
+  pub fn into(&self) -> *mut Rc<RefCell<MemoryUser>> {
+    self.0
+  }
+  pub fn add_page(&self, pg: PhysAddr) {
+    unsafe { (**self.0).borrow_mut() }.pages.push(pg)
+  }
+  pub fn page_count(&self) -> usize {
+    let mem = unsafe { (**self.0).borrow_mut() };
+    mem.page_count()
+  }
 }
 
 #[derive(Clone)]
+pub struct MemoryKernelRef(*mut Rc<RefCell<MemoryKernel>>);
+//panic_on_drop!(MemoryKernelRef);
+
+impl core::ops::Deref for MemoryKernelRef {
+  type Target = RefCell<MemoryKernel>;
+
+  fn deref(&self) -> &RefCell<MemoryKernel> {
+    unsafe { (*self.0).deref() }
+  }
+}
+
+impl MemoryKernelRef {
+  pub fn new() -> MemoryKernelRef {
+    let data = Box::new(Rc::new(RefCell::new(MemoryKernel { pages: vec![] })));
+    let ptr = Box::into_raw(data);
+    assert!(ptr as usize != 0, "memory kernel reference null pointer");
+    MemoryKernelRef(ptr)
+  }
+  pub fn add_page(&self, pg: PhysAddr) {
+    unsafe { (**self.0).borrow_mut() }.pages.push(pg)
+  }
+}
+
+impl core::fmt::Debug for MemoryKernelRef {
+  fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    write!(f, "MKR:{:018x}=>{:?}", self.0 as usize, *self.borrow())
+  }
+}
+
+#[derive(Clone, Debug)]
+pub enum Stack {
+  NoStack,
+  User(MemoryUserRef),
+  Kernel(MemoryKernelRef),
+}
+
+#[derive(Clone, Debug)]
 pub enum Memory {
   NoMemory,
-  User(Rc<RefCell<MemoryUser>>),
+  User(MemoryUserRef),
+  Code(MemoryUserRef),
+  ReadOnly(MemoryUserRef),
 }
 
 impl Stack {
@@ -29,15 +116,27 @@ impl Stack {
   pub fn map(&self) {
     match self {
       Stack::NoStack => (),
-      Stack::User(s) => (*s).borrow().map(),
-      Stack::Kernel(s) => (*s).borrow().map(),
+      Stack::User(s) => (*s).borrow().map(
+        PhysAddr::new_usize_or_abort(crate::vmem::STACK_START),
+        MapType::Stack,
+      ),
+      Stack::Kernel(s) => (*s).borrow().map(
+        PhysAddr::new_usize_or_abort(crate::vmem::KSTACK_START),
+        MapType::Stack,
+      ),
     }
   }
   pub fn unmap(&self) {
     match self {
       Stack::NoStack => (),
-      Stack::User(s) => (*s).borrow().unmap(),
-      Stack::Kernel(s) => (*s).borrow().unmap(),
+      Stack::User(s) => (*s).borrow().unmap(
+        PhysAddr::new_usize_or_abort(crate::vmem::STACK_START),
+        MapType::Stack,
+      ),
+      Stack::Kernel(s) => (*s).borrow().unmap(
+        PhysAddr::new_usize_or_abort(crate::vmem::KSTACK_START),
+        MapType::Stack,
+      ),
     }
   }
 }
@@ -49,72 +148,160 @@ impl Memory {
   pub fn new_usermemory() -> Memory {
     Memory::User(MemoryUser::new())
   }
+  pub fn new_codememory() -> Memory {
+    Memory::Code(MemoryUser::new_empty())
+  }
+  pub fn new_romemory() -> Memory {
+    Memory::ReadOnly(MemoryUser::new_empty())
+  }
   pub fn map(&self) {
     match self {
       Memory::NoMemory => (),
-      Memory::User(s) => (*s).borrow().map(),
+      Memory::User(s) => (*s).borrow().map(
+        PhysAddr::new_usize_or_abort(crate::vmem::DATA_START),
+        MapType::Data,
+      ),
+      Memory::Code(s) => (*s).borrow().map(
+        PhysAddr::new_usize_or_abort(crate::vmem::CODE_START),
+        MapType::Code,
+      ),
+      Memory::ReadOnly(s) => (*s).borrow().map(
+        PhysAddr::new_usize_or_abort(crate::vmem::BSS_START),
+        MapType::ReadOnly,
+      ),
+    }
+  }
+  // map_rw maps all data into memory but as non-executable read-write
+  pub fn map_rw(&self) {
+    match self {
+      Memory::NoMemory => (),
+      Memory::User(s) => (*s).borrow().map(
+        PhysAddr::new_usize_or_abort(crate::vmem::DATA_START),
+        MapType::Data,
+      ),
+      Memory::Code(s) => (*s).borrow().map(
+        PhysAddr::new_usize_or_abort(crate::vmem::CODE_START),
+        MapType::Data,
+      ),
+      Memory::ReadOnly(s) => (*s).borrow().map(
+        PhysAddr::new_usize_or_abort(crate::vmem::BSS_START),
+        MapType::Data,
+      ),
     }
   }
   pub fn unmap(&self) {
     match self {
       Memory::NoMemory => (),
-      Memory::User(s) => (*s).borrow().map(),
+      Memory::User(s) => (*s).borrow().unmap(
+        PhysAddr::new_usize_or_abort(crate::vmem::DATA_START),
+        MapType::Data,
+      ),
+      Memory::Code(s) => (*s).borrow().unmap(
+        PhysAddr::new_usize_or_abort(crate::vmem::CODE_START),
+        MapType::Code,
+      ),
+      Memory::ReadOnly(s) => (*s).borrow().unmap(
+        PhysAddr::new_usize_or_abort(crate::vmem::BSS_START),
+        MapType::ReadOnly,
+      ),
+    }
+  }
+  pub fn get_zero_page_offset(&self) -> u16 {
+    match self {
+      Memory::NoMemory => 0,
+      Memory::User(s) => (*s).borrow_mut().zero_page_offset,
+      Memory::Code(s) => (*s).borrow_mut().zero_page_offset,
+      Memory::ReadOnly(s) => (*s).borrow_mut().zero_page_offset,
+    }
+  }
+  pub fn set_zero_page_offset(&self, offset: u16) {
+    let cur_offset = self.get_zero_page_offset();
+    if cur_offset != 0 {
+      // someone wrote bad code, kill the kernel
+      panic!("kernel attempted to set zero_page_offset twice: 1. {:#06x}, 2. {:#06x}", cur_offset, offset)
+    }
+    debug!("setting zero_page_offset={:#06x}", offset);
+    match self {
+      Memory::NoMemory => (),
+      Memory::User(s) => (*s).borrow_mut().zero_page_offset = offset,
+      Memory::Code(s) => (*s).borrow_mut().zero_page_offset = offset,
+      Memory::ReadOnly(s) => (*s).borrow_mut().zero_page_offset = offset,
+    }
+  }
+  pub fn page_count(&self) -> usize {
+    match self {
+      Memory::NoMemory => 0,
+      Memory::User(s) => (*s).borrow().page_count(),
+      Memory::Code(s) => (*s).borrow().page_count(),
+      Memory::ReadOnly(s) => (*s).borrow().page_count(),
     }
   }
 }
 
+#[derive(Debug)]
 pub struct MemoryUser {
   pages: Vec<PhysAddr>,
+  zero_page_offset: u16,
 }
 
 impl MemoryUser {
-  fn new() -> Rc<RefCell<MemoryUser>> {
-    Rc::new(RefCell::new(MemoryUser{
-      pages: vec!(),
-    }))
+  fn new() -> MemoryUserRef {
+    MemoryUserRef::new()
   }
-  fn map(&self) {
-    if self.pages.len() == 0 { return; }
-    use ::vmem::mapper::{map,MapType};
-    use ::vmem::PhysAddr;
-    debug!("mapping user memory");
-    let base = PhysAddr::new(::vmem::STACK_START as u64)
-      .expect("need base for memory map");
-    debug!("mapping user memory to {}", base);
-    map(base, self.pages.clone(), MapType::Stack);
-    debug!("mapping user memory complete");
+  fn new_empty() -> MemoryUserRef {
+    MemoryUserRef::new_empty()
   }
-  fn unmap(&self) {
-    let base = PhysAddr::new(::vmem::STACK_START as u64)
-      .expect("need base for memory unmap");
-    use ::vmem::mapper::{unmap,MapType};
-    unmap(base, 16, MapType::Stack);
-    panic!("not implemented")
+  fn map(&self, base: PhysAddr, t: MapType) {
+    if self.pages.len() == 0 {
+      return;
+    }
+    if self.zero_page_offset != 0 {
+      debug!("pre-mapping zero pages");
+      for x in 0..self.zero_page_offset {
+        let addr = PhysAddr::new_usize_or_abort(base.as_usize() + crate::vmem::PAGE_SIZE * x as usize);
+        map_zero(addr);
+      }
+    }
+    debug!("mapping user memory to {} ({:?})", base, t);
+    map(base, self.pages.clone(), t);
+  }
+  fn unmap(&self, base: PhysAddr, t: MapType) {
+    if self.pages.len() == 0 {
+      return;
+    }
+    if self.zero_page_offset != 0 {
+      debug!("pre-unmapping zero pages");
+      for x in 0..self.zero_page_offset {
+        let addr = PhysAddr::new_usize_or_abort(base.as_usize() + crate::vmem::PAGE_SIZE * x as usize);
+        unmap(addr, 1, MapType::Zero);
+      }
+    }
+    debug!("unmapping user memory at {} ({:?})", base, t);
+    unmap(base, self.pages.len(), t);
+  }
+  fn page_count(&self) -> usize {
+    self.pages.len() + self.zero_page_offset as usize
   }
 }
 
+#[derive(Debug)]
 pub struct MemoryKernel {
   pages: Vec<PhysAddr>,
 }
 
 impl MemoryKernel {
-  fn new() -> Rc<RefCell<MemoryKernel>> {
-    Rc::new(RefCell::new(MemoryKernel{
-      pages: vec!(),
-    }))
+  fn new() -> MemoryKernelRef {
+    MemoryKernelRef::new()
   }
-  fn map(&self) {
-    if self.pages.len() == 0 { return; }
-    use ::vmem::mapper::{map,MapType};
-    use ::vmem::PhysAddr;
-    debug!("mapping kernel memory");
-    let base = PhysAddr::new(::vmem::KSTACK_START as u64)
-      .expect("need base for kernel memory map");
+  fn map(&self, base: PhysAddr, t: MapType) {
+    if self.pages.len() == 0 {
+      return;
+    }
     debug!("mapping Kernel Memory to {}", base);
-    map(base, self.pages.clone(), MapType::Stack);
+    map(base, self.pages.clone(), t);
     debug!("kernel memory mapped")
   }
-  fn unmap(&self) {
+  fn unmap(&self, _base: PhysAddr, _t: MapType) {
     panic!("kernel memory cannot be unmapped")
   }
 }

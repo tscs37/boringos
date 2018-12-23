@@ -1,8 +1,8 @@
 
 
 const PAGES_PER_BLOCK: usize = 448; // Readjust this when struct layout changes
-use ::core::ptr::NonNull;
-use ::core::cmp::Ordering;
+use core::ptr::NonNull;
+use core::cmp::Ordering;
 
 // we ignore address 0
 #[derive(Clone,Copy)]
@@ -116,12 +116,18 @@ impl PhysAddr {
     PhysAddr::new(p as u64)
   }
   pub fn from(nn: NonNull<u8>) -> PhysAddr {
+    assert!((nn.as_ptr() as usize) < 0x0000_8000_0000_0000 ||
+      (nn.as_ptr() as usize) >= 0xffff_8000_0000_0000,
+      "invalid address: {:#018x}", (nn.as_ptr() as usize));
     PhysAddr(nn)
   }
   pub fn into<T>(self) -> NonNull<T> {
     unsafe { NonNull::new_unchecked(self.0.as_ptr() as *mut T) }
   }
   pub unsafe fn new_unchecked(p: u64) -> PhysAddr {
+    assert!(p < 0x0000_8000_0000_0000 ||
+      p >= 0xffff_8000_0000_0000,
+      "invalid address: {:#018x}", p);
     PhysAddr(NonNull::new_unchecked(p as *mut u8))
   }
   pub fn new_or_abort(p: u64) -> PhysAddr {
@@ -130,10 +136,13 @@ impl PhysAddr {
       Some(pa) => pa
     }
   }
+  pub fn new_usize_or_abort(p: usize) -> PhysAddr {
+    PhysAddr::new_or_abort(p as u64)
+  }
   // Adds the specified number of pages as offset and returns the result as PhysAddr
   pub unsafe fn add_pages(&self, pages: u64) -> PhysAddr {
     PhysAddr(NonNull::new_unchecked(
-      (self.as_u64() + (pages * ::vmem::PAGE_SIZE as u64)) as *mut u8))
+      (self.as_u64() + (pages * crate::vmem::PAGE_SIZE as u64)) as *mut u8))
   }
   pub fn as_u64(&self) -> u64 {
     self.as_mut8() as u64
@@ -258,7 +267,7 @@ impl PageRange {
         prev: PageListLink::None,
       };
       self.start = unsafe { PhysAddr::new_unchecked(
-        self.start.as_u64() + (pages * ::vmem::PAGE_SIZE) as u64
+        self.start.as_u64() + (pages * crate::vmem::PAGE_SIZE) as u64
       ) };
       self.pages -= pages;
       trace!("split pagerange, returning");
@@ -465,6 +474,7 @@ impl PageListLink {
               expect("nonused page grabbed but was none");
             trace!("zeroing page");
             unsafe { zero_page(addr) };
+            debug!("allocated {}", addr);
             return Some(addr);
           }
         }
@@ -498,6 +508,7 @@ impl PageListLink {
     }
   }
   pub fn release(&mut self, p: PhysAddr) {
+    debug!("releasing {}", p);
     unsafe { zero_page(p) };
     let mut cur = Some(*self);
     loop {
@@ -634,7 +645,7 @@ impl PageListLink {
             }
           }
         } else {
-          let mut e = PageListLink::PageListEntry(NonNull::from(pref));
+          let e = PageListLink::PageListEntry(NonNull::from(pref));
           match e.get_start().next_entry_with_empty() {
             Some(e) => 
               { PageListLink::PageListEntry(e).convert_range(needed) },
@@ -659,7 +670,7 @@ impl PageListLink {
 }
 
 unsafe fn zero_page(page: PhysAddr) {
-  use ::vmem::PAGE_SIZE;
+  use crate::vmem::PAGE_SIZE;
   let page_raw = page.as_u64() as *mut [u8; PAGE_SIZE];
   for x in 0..PAGE_SIZE {
     (*page_raw)[x] = 0x00;

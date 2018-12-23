@@ -1,9 +1,9 @@
-use ::vmem::PageManager;
+use crate::vmem::PageManager;
 use core::ops::{Index, IndexMut};
 use core::marker::PhantomData;
 use core::ptr::NonNull;
-use ::vmem::PAGE_SIZE;
-use ::vmem::PhysAddr;
+use crate::vmem::PAGE_SIZE;
+use crate::vmem::PhysAddr;
 
 const ENTRY_COUNT: usize = 512;
 const LO_ADDR_SPACE: usize = 0x0000_8000_0000_0000;
@@ -188,7 +188,7 @@ impl ActivePageTable {
         .and_then(|p3| p3.next_table_mut(page.p3_index()))
         .and_then(|p2| p2.next_table_mut(page.p2_index()))
         .expect("mapping code does not support huge pages");
-      let frame = p1[page.p1_index()].real_addr().unwrap();
+      let frame = p1[page.p1_index()].real_addr().expect(&format!("failed to unwrap unmapped frame {:#018x}", page.start_address()));
       p1[page.p1_index()].set_unused();
       use x86_64::instructions::tlb;
       use x86_64::VirtAddr;
@@ -290,9 +290,9 @@ impl<L> Table<L> where L: HierarchicalLevel {
           .expect("no free memory available");
         self.entries[index].set_addr(frame, 
           EntryFlags::PRESENT | EntryFlags::WRITABLE);
-        self.next_table_mut(index).unwrap().zero();
+        self.next_table_mut(index).expect("need next table").zero();
       }
-      self.next_table_mut(index).unwrap()
+      self.next_table_mut(index).expect("need next table")
     }
 }
 

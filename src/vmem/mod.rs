@@ -2,8 +2,8 @@ pub mod pagelist;
 pub mod pagetable;
 pub mod mapper;
 
-use ::slabmalloc::ObjectPage;
-use ::vmem::pagelist::PageListLink;
+use slabmalloc::ObjectPage;
+use crate::vmem::pagelist::PageListLink;
 
 pub const PAGE_SIZE: usize = 4096;
 
@@ -14,10 +14,18 @@ pub const KSTACK_END: usize    = 0xffff_ff78_0000_0000;
 pub const GUARD_PAGE: usize    = 0xffff_ff77_ffff_0000;
 pub const STACK_START: usize   = 0xffff_ff77_fffe_0000;
 pub const STACK_END: usize     = 0xffff_ff00_0001_0000;
+pub const DATA_END: usize      = 0x0000_8fff_fff0_0000;
+pub const DATA_START: usize    = 0x0000_0200_0000_0000;
+pub const BSS_END: usize       = 0x0000_01ff_ffff_0000;
+pub const BSS_START: usize     = 0x0000_01f0_0000_0000;
+pub const CODE_END: usize      = 0x0000_01f0_0000_0000;
+pub const CODE_START: usize    = 0x0000_0000_0101_0000;
+pub const KERNEL_END: usize    = 0x0000_0000_0100_0000;
+pub const KERNEL_START: usize  = 0x0000_0000_0000_0000;
 pub const UGUARD_PAGE: usize   = 0xffff_ff00_0000_0000;
 
-pub use ::vmem::pagelist::PhysAddr;
-pub use ::vmem::pagetable::PAGE_ADDR_FILTER;
+pub use crate::vmem::pagelist::PhysAddr;
+pub use crate::vmem::pagetable::PAGE_ADDR_FILTER;
 
 #[repr(align(4096))]
 #[derive(Copy, Clone)]
@@ -38,7 +46,7 @@ impl StaticPage {
 pub struct PageManager {
   pub first_page_mem: StaticPage,
   pub first_range_mem: StaticPage,
-  pub boot_pages: [StaticPage; ::BOOT_MEMORY_PAGES],
+  pub boot_pages: [StaticPage; crate::BOOT_MEMORY_PAGES],
   pub use_boot_memory: bool,
   // list of 4k pages
   //pub pages: Option<Arc<Uns
@@ -52,7 +60,7 @@ impl<'a> PageManager {
       PageListLink::None => {
         self.pages = PageListLink::PageListEntry(
           pagelist::PageList::new(self.first_page_mem.to_physaddr()));
-        use ::vmem::pagelist::PageRange;
+        use crate::vmem::pagelist::PageRange;
         let mut pr = PageListLink::PageRangeEntry(
           PageRange::new(self.first_range_mem.to_physaddr(),
             self.get_boot_base(),

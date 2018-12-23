@@ -1,7 +1,8 @@
 
-use ::process_manager::Task;
-use ::alloc::collections::BTreeMap;
-use ::alloc::sync::Arc;
+use crate::process_manager::Task;
+use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
+use core::cell::RefCell;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Handle(u64);
@@ -14,7 +15,7 @@ impl Handle {
     Handle(x)
   }
   pub fn gen() -> Handle {
-    if !::bindriver::cpu::has_rdrand() {
+    if !crate::bindriver::cpu::has_rdrand() {
       panic!("BoringOS requires a CPU with RDRAND Support");
     }
     let rnd: u64;
@@ -45,17 +46,17 @@ impl ::core::fmt::Display for Handle {
 
 #[derive(Clone)]
 pub struct TaskHandleRegistry(BTreeMap<TaskHandle, 
-  Arc<*mut Task>>);
+  Arc<RefCell<Task>>>);
 
 
 impl TaskHandleRegistry {
   pub fn new() -> TaskHandleRegistry {
     TaskHandleRegistry(BTreeMap::new())
   }
-  pub fn insert(&mut self, th: &TaskHandle, t: &mut Task) {
-    self.0.insert(*th, Arc::new(t as *mut _));
+  pub fn insert(&mut self, th: &TaskHandle, t: Task) {
+    self.0.insert(*th, Arc::new(RefCell::new(t)));
   }
-  pub fn resolve(&self, th: &TaskHandle) -> Option<&Arc<*mut Task>> {
+  pub fn resolve(&self, th: &TaskHandle) -> Option<&Arc<RefCell<Task>>> {
     self.0.get(th)
   }
 }
@@ -66,6 +67,9 @@ pub struct TaskHandle(Handle);
 impl TaskHandle {
   pub const fn into(self) -> Handle {
     self.0
+  }
+  pub const fn into_c(self) -> u64 {
+    self.0.into()
   }
   pub const fn from(x: Handle) -> Self {
     TaskHandle(x)

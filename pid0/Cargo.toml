@@ -1,0 +1,8 @@
+[package]
+name = "pid0"
+version = "0.1.0"
+authors = ["Tim Schuster <mail@timschuster.info>"]
+edition = "2018"
+
+[dependencies]
+uart_16550 = "0.1.0"

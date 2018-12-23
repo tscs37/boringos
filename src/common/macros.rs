@@ -1,37 +1,3 @@
-macro_rules! proc_yield {
-  () => {
-    ::common::yield_to(0);
-  }
-}
-macro_rules! ipc_call {
-  ($fnc:ident, $data:expr) => { {
-    debug!("called function {} with payload {}", stringify!($fnc), stringify!($data));
-    0
-  } };
-  ($fnc:ident) => { {
-    debug!("called function {}", stringify!($fnc));
-    0
-  } }
-}
-
-#[allow(unused_macros)]
-macro_rules! ipc_return {
-  ($data:expr) => { {
-    let ipc_data = $data;
-    debug!("Returning value {:#018x}", ipc_data);
-    loop{}
-  } }
-}
-
-#[allow(unused_macros)]
-macro_rules! ipc_error {
-  ($code:expr) => { {
-    let ipc_err = $code;
-    debug!("Returning error {:#x}", ipc_err);
-    loop{}
-  } }
-}
-
 #[allow(unused_macros)]
 macro_rules! breakpoint {
   () => {

@@ -6,10 +6,10 @@ pub mod qemu;
 pub mod cpu;
 
 pub fn init() {
-  ::bindriver::serial::init();
+  crate::bindriver::serial::init();
   debug!("setting up CPU IDT");
-  ::bindriver::cpu::enable_nxe_bit();
-  ::bindriver::cpu::gdt::init();
-  ::bindriver::cpu::idt::init();
-  ::bindriver::cpu::pic::init();
+  crate::bindriver::cpu::enable_nxe_bit();
+  crate::bindriver::cpu::gdt::init();
+  crate::bindriver::cpu::idt::init();
+  crate::bindriver::cpu::pic::init();
 }
