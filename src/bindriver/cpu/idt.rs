@@ -43,6 +43,16 @@ macro_rules! intr {
     };
 }
 
+macro_rules! intr_no_ist {
+    ($idt:ident, $name:ident) => {
+        unsafe {
+            $idt.$name
+                .set_handler_fn($name)
+                .set_stack_index(crate::bindriver::cpu::gdt::INTR_IST_INDEX);
+        }
+    };
+}
+
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
@@ -58,7 +68,7 @@ lazy_static! {
         intr!(idt, segment_not_present);
         intr!(idt, stack_segment_fault);
         intr!(idt, general_protection_fault);
-        intr!(idt, page_fault);
+        intr_no_ist!(idt, page_fault);
         intr!(idt, machine_check);
         idt[usize::from(TIMER_INTERRUPT_ID)].set_handler_fn(timer_interrupt);
         idt
@@ -153,9 +163,22 @@ extern "x86-interrupt" fn page_fault(
                 //TODO: kill task instead
                 panic!("task attempted to run instruction from stack")
             }*/
+            debug!("checking if the task touched stack correctly");
+            let expected_paddr = PhysAddr::new_usize_or_abort(
+                crate::vmem::STACK_START
+                    - (crate::vmem::PAGE_SIZE
+                        * (crate::KERNEL_INFO.read().get_stack_memory_ref_size() + 1)),
+            );
+            if expected_paddr != paddr {
+                error!(
+                    "wanted task to touch {} but it touched {}",
+                    expected_paddr, paddr
+                );
+                panic!("task touched stack memory early, that's nasty");
+            }
             debug!("mapping user stack page to {:#018x}", page.start_address());
-            map_new(paddr, MapType::Stack);
-            //TODO: adjust task stack size
+            let new_page = map_new(paddr, MapType::Stack);
+            crate::KERNEL_INFO.write().add_code_page(new_page);
             debug!("mapped, returning...");
             return;
         } else if page.start_address() == crate::vmem::KSTACK_GUARD {

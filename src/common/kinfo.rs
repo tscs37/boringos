@@ -70,6 +70,12 @@ impl KernelInfo {
     let mur = MemoryUserRef::from(ptr);
     self.add_page_to_mur(p, mur)
   }
+  pub fn add_stack_page(&self, p: PhysAddr) {
+    debug!("adding {} to active stack memory", p);
+    let ptr = self.current_stack_memory_ref_int.load(Ordering::SeqCst);
+    let mur = MemoryUserRef::from(ptr);
+    self.add_page_to_mur(p, mur)
+  }
   fn add_page_to_mur(&self, p: PhysAddr, mur: MemoryUserRef) {
     mur.add_page(p);
   }
@@ -80,6 +86,11 @@ impl KernelInfo {
   }
   pub fn get_data_memory_ref_size(&self) -> usize {
     let ptr = self.current_data_memory_ref_int.load(Ordering::SeqCst);
+    let mur = MemoryUserRef::from(ptr);
+    mur.page_count()
+  }
+  pub fn get_stack_memory_ref_size(&self) -> usize {
+    let ptr = self.current_stack_memory_ref_int.load(Ordering::SeqCst);
     let mur = MemoryUserRef::from(ptr);
     mur.page_count()
   }
@@ -96,6 +107,16 @@ impl KernelInfo {
           .current_data_memory_ref_int
           .swap(s.into(), Ordering::SeqCst),
       ),
+      Memory::Stack(s) => MemoryUserRef::from(
+        self
+          .current_stack_memory_ref_int
+          .swap(s.into(), Ordering::SeqCst),
+      ),
+      Memory::ReadOnly(s) => MemoryUserRef::from(
+        self
+          .current_bss_memory_ref_int
+          .swap(s.into(), Ordering::SeqCst),
+      ),
       _ => panic!("tried to assign non-code memory to code memory"),
     }
   }
@@ -103,7 +124,13 @@ impl KernelInfo {
     self.set_memory_ref(&Memory::Code(v))
   }
   pub fn set_data_memory_ref(&self, v: MemoryUserRef) -> MemoryUserRef {
-    self.set_memory_ref(&Memory::Code(v))
+    self.set_memory_ref(&Memory::User(v))
+  }
+  pub fn set_stack_memory_ref(&self, v: MemoryUserRef) -> MemoryUserRef {
+    self.set_memory_ref(&Memory::Stack(v))
+  }
+  pub fn set_bss_memory_ref(&self, v: MemoryUserRef) -> MemoryUserRef {
+    self.set_memory_ref(&Memory::ReadOnly(v))
   }
 }
 pub static KERNEL_INFO: RwLock<KernelInfo> = RwLock::new(KernelInfo::new());

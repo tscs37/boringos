@@ -1,20 +1,20 @@
+use alloc::vec::Vec;
+use crate::process_manager::TaskHandle;
+use crate::vmem::pagetable::Page;
+use crate::vmem::pagetable::{ActivePageTable, EntryFlags};
 use crate::vmem::PhysAddr;
 use crate::vmem::PAGE_SIZE;
-use crate::vmem::pagetable::Page;
-use crate::vmem::pagetable::{ActivePageTable,EntryFlags};
-use crate::process_manager::TaskHandle;
-use alloc::vec::Vec;
 
 #[derive(PartialEq, Debug)]
 pub enum MapType {
-  Stack, // Stack Page, No Execute
-  Data, // Data Page, No Execute
-  Code, // Code Page, No Write
-  ReadOnly, // Data Page, No Write
+  Stack,               // Stack Page, No Execute
+  Data,                // Data Page, No Execute
+  Code,                // Code Page, No Write
+  ReadOnly,            // Data Page, No Write
   Managed(TaskHandle), // Memory available via other process
-  ShMem(TaskHandle), // Memory shared to other process
-  Guard, // No Execute, No Read+Write
-  Zero, // Map No Execute, No RW Page, share page
+  ShMem(TaskHandle),   // Memory shared to other process
+  Guard,               // No Execute, No Read+Write
+  Zero,                // Map No Execute, No RW Page, share page
 }
 
 impl MapType {
@@ -32,7 +32,7 @@ impl MapType {
   }
 }
 
-pub fn map_new(base_addr: PhysAddr, mt:MapType) -> PhysAddr {
+pub fn map_new(base_addr: PhysAddr, mt: MapType) -> PhysAddr {
   let mut apt = unsafe { ActivePageTable::new() };
   let pm = &mut crate::pager();
   let flags = mt.flags();
@@ -48,7 +48,12 @@ pub fn map_zero(addr: PhysAddr) {
   let pm = &mut crate::pager();
   let flags = MapType::Zero.flags();
   debug!("mapping page {} to zero page", addr);
-  apt.map_to(Page::containing_address(addr.as_usize()), zero_page, flags, pm)
+  apt.map_to(
+    Page::containing_address(addr.as_usize()),
+    zero_page,
+    flags,
+    pm,
+  )
 }
 
 pub fn is_mapped(addr: PhysAddr) -> bool {
@@ -67,7 +72,7 @@ pub fn map(base_addr: PhysAddr, pl: Vec<PhysAddr>, mt: MapType) {
       base_addr.as_usize() + x * PAGE_SIZE
     };
     apt.map_to(Page::containing_address(addr), pl[x], flags, pm);
-  };
+  }
 }
 
 pub fn unmap(base_addr: PhysAddr, pl_size: usize, mt: MapType) {
@@ -79,6 +84,10 @@ pub fn unmap(base_addr: PhysAddr, pl_size: usize, mt: MapType) {
     } else {
       base_addr.as_usize() + x * PAGE_SIZE
     };
-    apt.unmap(Page::containing_address(addr), pm);
+    if mt != MapType::Zero {
+      apt.unmap(Page::containing_address(addr), pm);
+    } else {
+      apt.unmap_no_free(Page::containing_address(addr), pm);
+    }
   }
 }

@@ -9,7 +9,7 @@ fn main(_: isize, syscp: *const *const u8) -> isize {
     use core::fmt::Write;
     sp.write_str("Hello, world!").unwrap();
     sp.write_fmt(format_args!("SYSCP={:#018x}", syscp as u64));
-    0
+    loop{}
 }
 
 use core::panic::PanicInfo;

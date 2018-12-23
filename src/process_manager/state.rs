@@ -1,5 +1,5 @@
 use core::cell::RefCell;
-use crate::process_manager::memory::{Memory, Stack};
+use crate::process_manager::memory::Memory;
 use crate::vmem::PhysAddr;
 
 #[derive(Debug, Clone)]
@@ -7,7 +7,7 @@ pub struct State {
   active: bool,
   mode: CPUMode,
   start_rip: PhysAddr,
-  stack: Stack,
+  stack: Memory,
   memory: Memory,
   code: Memory,
   bss: Memory,
@@ -36,7 +36,7 @@ impl State {
       active: false,
       mode: CPUMode::Kernel,
       start_rip: ptr,
-      stack: super::memory::Stack::new_userstack(),
+      stack: super::memory::Memory::new_stack(),
       memory: super::memory::Memory::new_usermemory(),
       bss: super::memory::Memory::new_romemory(),
       code: super::memory::Memory::new_codememory(),
@@ -124,7 +124,7 @@ impl State {
           active: false,
           mode: CPUMode::Kernel,
           start_rip: PhysAddr::new_or_abort(binary.entry),
-          stack: super::memory::Stack::new_userstack(),
+          stack: super::memory::Memory::new_stack(),
           memory: super::memory::Memory::new_usermemory(),
           bss: super::memory::Memory::new_romemory(),
           code: code_memory,
@@ -143,7 +143,7 @@ impl State {
       active: false,
       mode: CPUMode::Kernel,
       start_rip: PhysAddr::new(null_fn as u64).expect("null_fn must resolve"),
-      stack: super::memory::Stack::new_nostack(),
+      stack: super::memory::Memory::new_nomemory(),
       memory: super::memory::Memory::new_nomemory(),
       bss: super::memory::Memory::new_nomemory(),
       code: super::memory::Memory::new_nomemory(),
@@ -255,10 +255,19 @@ pub unsafe fn switch_to(next_task: Arc<RefCell<crate::process_manager::Task>>) -
   if next_task.borrow().state_is_null() {
     panic!("attempted to run null state");
   }
+  {
+    let next_task = next_task.borrow();
+    let state = next_task.state();
+    let kinfo =crate::KERNEL_INFO.write();
+    kinfo.set_memory_ref(&state.code);
+    kinfo.set_memory_ref(&state.bss);
+    kinfo.set_memory_ref(&state.stack);
+    kinfo.set_memory_ref(&state.memory);
+  }
   let rip = (next_task.borrow()).rip();
   let rsp = (next_task.borrow()).rsp();
   let rbp = (next_task.borrow()).rbp();
-  let syscp = 0;
+  let symrfp = 0;
   debug!("manual switch to rip = {:#018x}", rip);
   next_task.borrow().map();
   debug!("mapped memory, switching stack and clearing registers");
@@ -266,13 +275,13 @@ pub unsafe fn switch_to(next_task: Arc<RefCell<crate::process_manager::Task>>) -
     "
     mov rsp, $0
     mov rbp, $1
-    add rsp, 16 # Adjust stack
-    push rbx # Push syscp argument
+    add rsp, 24 # Adjust stack
+    push rbx # Push symrfp argument (Symbol Resolver Function Pointer)
     push 0   # Push argc == 0 for unix start
     push rax
     ret
     "
-    ::"r"(rsp), "r"(rbp), "{rax}"(rip), "{rbx}"(syscp)
+    ::"r"(rsp), "r"(rbp), "{rax}"(rip), "{rbx}"(symrfp)
     :"memory", "rbx", "rax": "intel", "volatile"
   );
   panic!("Returned somehow from non-cooperative switch-to");

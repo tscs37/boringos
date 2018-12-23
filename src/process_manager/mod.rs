@@ -7,7 +7,6 @@ use alloc::sync::Arc;
 use core::cell::RefCell;
 use crate::process_manager::handles::TaskHandleRegistry;
 pub use crate::process_manager::handles::{Handle, TaskHandle};
-use crate::process_manager::memory::Stack;
 pub use crate::process_manager::memory::{
   Memory, MemoryKernel, MemoryKernelRef, MemoryUser, MemoryUserRef,
 };
@@ -77,7 +76,7 @@ pub struct Scheduler {
   treg: Arc<RwLock<TaskHandleRegistry>>,
   scheduler_thandle: TaskHandle,
   current_task: TaskHandle,         //TODO: change for multi-CPU
-  kernel_stack: Arc<RwLock<Stack>>, //TODO: handle multiple kernel stacks
+  kernel_stack: Arc<RwLock<Memory>>, //TODO: handle multiple kernel stacks
 }
 
 panic_on_drop!(Scheduler);
@@ -90,7 +89,7 @@ impl Scheduler {
       treg: Arc::new(RwLock::new(TaskHandleRegistry::new())),
       scheduler_thandle: nulltaskh,
       current_task: nulltaskh,
-      kernel_stack: Arc::new(RwLock::new(Stack::new_kstack())),
+      kernel_stack: Arc::new(RwLock::new(Memory::new_kernelstack())),
     };
     s.insert_treg(&TaskHandle::zero(), nulltask);
     s
@@ -99,7 +98,6 @@ impl Scheduler {
     self.current_task
   }
   pub fn register_scheduler(&mut self, th: &TaskHandle) {
-    //self.current_task = *th;
     self.scheduler_thandle = *th;
   }
   pub fn new_kproc<S>(&mut self, name: S, f: *const u8) -> Result<TaskHandle, ()>
