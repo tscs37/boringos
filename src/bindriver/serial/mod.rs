@@ -22,7 +22,7 @@ impl ::log::Log for SERIAL1 {
         metadata.level() <= Level::Debug && !(false
             // put in blacklisted debug modules here
             || metadata.target() == "slabmalloc"
-            //|| metadata.target() == "boringos::vmem::pagelist"
+            || metadata.target() == "boringos::vmem::pagelist"
             || metadata.target() == "boringos::vmem::pagetable"
         )
     }

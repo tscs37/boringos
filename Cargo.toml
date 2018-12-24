@@ -28,6 +28,9 @@ features = ["spin_no_std"]
 [dependencies.log]
 version = "0.4.5"
 
+[dependencies.symrfp]
+path = "./symrfp"
+
 [package.metadata.cargo-xbuild]
 memcpy = true
 

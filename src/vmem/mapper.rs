@@ -22,7 +22,7 @@ impl MapType {
     match self {
       MapType::Stack => EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
       MapType::Data => EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
-      MapType::Code => EntryFlags::PRESENT,
+      MapType::Code => EntryFlags::NOTHING,
       MapType::ReadOnly => EntryFlags::NO_EXECUTE,
       MapType::Managed(_) => EntryFlags::OS_EXTERNAL,
       MapType::ShMem(_) => EntryFlags::OS_EXTERNAL,
@@ -36,24 +36,27 @@ pub fn map_new(base_addr: PhysAddr, mt: MapType) -> PhysAddr {
   let mut apt = unsafe { ActivePageTable::new() };
   let pm = &mut crate::pager();
   let flags = mt.flags();
-  debug!("mapping new page to {}", base_addr);
+  debug!("mapping new page to {} ({:?})", base_addr, mt);
   apt.map(Page::containing_address(base_addr.as_usize()), flags, pm)
 }
 
-pub fn map_zero(addr: PhysAddr) {
+pub fn map_zero(addr: PhysAddr, size: u16) {
   // grab zero_page first, otherwise we get a problem when we grab the lock on the APT
   // below!
+  debug!("mapping memory at {} ({} pages, {:?})", addr, size, MapType::Zero);
   let zero_page = crate::KERNEL_INFO.read().get_zero_page_addr();
   let mut apt = unsafe { ActivePageTable::new() };
   let pm = &mut crate::pager();
   let flags = MapType::Zero.flags();
-  debug!("mapping page {} to zero page", addr);
-  apt.map_to(
-    Page::containing_address(addr.as_usize()),
+  for x in 0..size {
+    let addr = addr.as_usize() + x as usize * crate::vmem::PAGE_SIZE;
+    apt.map_to(
+    Page::containing_address(addr),
     zero_page,
     flags,
     pm,
   )
+  }
 }
 
 pub fn is_mapped(addr: PhysAddr) -> bool {
@@ -62,6 +65,7 @@ pub fn is_mapped(addr: PhysAddr) -> bool {
 }
 
 pub fn map(base_addr: PhysAddr, pl: Vec<PhysAddr>, mt: MapType) {
+  debug!("mapping memory at {} ({} pages, {:?})", base_addr, pl.len(), mt);
   let mut apt = unsafe { ActivePageTable::new() };
   let pm = &mut crate::pager();
   let flags = mt.flags();
@@ -76,6 +80,7 @@ pub fn map(base_addr: PhysAddr, pl: Vec<PhysAddr>, mt: MapType) {
 }
 
 pub fn unmap(base_addr: PhysAddr, pl_size: usize, mt: MapType) {
+  debug!("unmapping memory at {} ({} pages, {:?})", base_addr, pl_size, mt);
   let mut apt = unsafe { ActivePageTable::new() };
   let pm = &mut crate::pager();
   for x in 0..pl_size {
@@ -84,10 +89,6 @@ pub fn unmap(base_addr: PhysAddr, pl_size: usize, mt: MapType) {
     } else {
       base_addr.as_usize() + x * PAGE_SIZE
     };
-    if mt != MapType::Zero {
-      apt.unmap(Page::containing_address(addr), pm);
-    } else {
-      apt.unmap_no_free(Page::containing_address(addr), pm);
-    }
+    apt.unmap_no_free(Page::containing_address(addr), pm);
   }
 }

@@ -17,8 +17,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "pid0"
 version = "0.1.0"
 dependencies = [
+ "symrfp 0.1.0",
  "uart_16550 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "symrfp"
+version = "0.1.0"
 
 [[package]]
 name = "uart_16550"

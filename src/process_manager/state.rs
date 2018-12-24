@@ -84,11 +84,9 @@ impl State {
               if vmr.start > cur_real_base + crate::vmem::PAGE_SIZE {
                 debug!("vmr.start({:#018x}) > cur_real_base({:#018x})", vmr.start, cur_real_base);
                 let size = (vmr.start - cur_real_base) / crate::vmem::PAGE_SIZE - 1;
-                debug!("pretouching memory to zero page for program");
-                for x in 0..size {
-                  crate::vmem::mapper::map_zero(PhysAddr::new_usize_or_abort(cur_real_base + crate::vmem::PAGE_SIZE * x));
-                }
                 assert!(size < core::u16::MAX as usize, "size was {}, bigger than {}", size, core::u16::MAX);
+                debug!("pretouching memory to zero page for program");
+                crate::vmem::mapper::map_zero(PhysAddr::new_usize_or_abort(cur_real_base), size as u16);
                 code_memory.set_zero_page_offset(size as u16);
                 debug!("code_memory page_count = {}", code_memory.page_count());
               } else if vmr.start < cur_real_base {
@@ -267,21 +265,23 @@ pub unsafe fn switch_to(next_task: Arc<RefCell<crate::process_manager::Task>>) -
   let rip = (next_task.borrow()).rip();
   let rsp = (next_task.borrow()).rsp();
   let rbp = (next_task.borrow()).rbp();
-  let symrfp = 0;
-  debug!("manual switch to rip = {:#018x}", rip);
+  let symrfp = crate::process_environment::symrf as *mut u8;
+  debug!("symrfp at {:#018x}", symrfp as u64);
+  debug!("mapping task memory");
   next_task.borrow().map();
-  debug!("mapped memory, switching stack and clearing registers");
+  debug!("switch to task with rip = {:#018x}", rip);
   asm!(
     "
     mov rsp, $0
     mov rbp, $1
-    add rsp, 24 # Adjust stack
+    add rsp, 32 # Adjust stack
     push rbx # Push symrfp argument (Symbol Resolver Function Pointer)
-    push 0   # Push argc == 0 for unix start
+    mov rbx, 2
+    push rbx # Push argc == 0 for unix start
     push rax
     ret
     "
-    ::"r"(rsp), "r"(rbp), "{rax}"(rip), "{rbx}"(symrfp)
+    ::"r"(rsp), "r"(rbp), "{rax}"(rip), "{rbx}"(*symrfp)
     :"memory", "rbx", "rax": "intel", "volatile"
   );
   panic!("Returned somehow from non-cooperative switch-to");

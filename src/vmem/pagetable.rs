@@ -252,6 +252,7 @@ impl ::core::fmt::Debug for Entry {
 
 bitflags! {
   pub struct EntryFlags: u64 {
+    const NOTHING =         0;
     const PRESENT =         1 << 0;
     const WRITABLE =        1 << 1;
     const USER_ACCESSIBLE = 1 << 2;

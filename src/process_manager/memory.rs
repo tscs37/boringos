@@ -24,19 +24,18 @@ impl core::fmt::Debug for MemoryUserRef {
 
 impl MemoryUserRef {
   pub fn new() -> Self {
-    let first_page = crate::common::alloc_page().expect("could not spawn page for user memory");
-    let second_page = crate::common::alloc_page().expect("could not spawn page for user memory");
-    let data = Box::new(Rc::new(RefCell::new(MemoryUser {
-      pages: vec![first_page, second_page],
-      zero_page_offset: 0,
-    })));
-    let ptr = Box::into_raw(data);
-    assert!(ptr as usize != 0, "memory user reference null pointer");
-    MemoryUserRef(ptr)
+    MemoryUserRef::new_sized(2)
   }
   pub fn new_empty() -> Self {
+    MemoryUserRef::new_sized(0)
+  }
+  pub fn new_sized(n: u8) -> Self {
+    let mut pages: Vec<PhysAddr> = Vec::new();
+    if n > 0 { for _ in 0..n {
+      pages.push(crate::common::alloc_page().expect("could not spawn page for user memory"));
+    } }
     let data = Box::new(Rc::new(RefCell::new(MemoryUser {
-      pages: vec![],
+      pages: pages,
       zero_page_offset: 0,
     })));
     let ptr = Box::into_raw(data);
@@ -112,7 +111,7 @@ impl Memory {
     Memory::ReadOnly(MemoryUser::new_empty())
   }
   pub fn new_stack() -> Memory {
-    Memory::Stack(MemoryUser::new())
+    Memory::Stack(MemoryUser::new_sized(3))
   }
   pub fn new_kernelstack() -> Memory {
     Memory::KernelStack(MemoryKernel::new())
@@ -244,6 +243,9 @@ impl MemoryUser {
   fn new() -> MemoryUserRef {
     MemoryUserRef::new()
   }
+  fn new_sized(n: u8) -> MemoryUserRef {
+    MemoryUserRef::new_sized(n)
+  }
   fn new_empty() -> MemoryUserRef {
     MemoryUserRef::new_empty()
   }
@@ -253,11 +255,7 @@ impl MemoryUser {
     }
     if self.zero_page_offset != 0 {
       debug!("pre-mapping zero pages");
-      for x in 0..self.zero_page_offset {
-        let addr =
-          PhysAddr::new_usize_or_abort(base.as_usize() + crate::vmem::PAGE_SIZE * x as usize);
-        map_zero(addr);
-      }
+      map_zero(base, self.zero_page_offset);
     }
     debug!("mapping user memory to {} ({:?})", base, t);
     let adj_base = base.as_usize() + (self.zero_page_offset as usize + 1) * crate::vmem::PAGE_SIZE;
@@ -273,11 +271,7 @@ impl MemoryUser {
     }
     if self.zero_page_offset != 0 {
       debug!("pre-unmapping zero pages");
-      for x in 0..self.zero_page_offset {
-        let addr =
-          PhysAddr::new_usize_or_abort(base.as_usize() + crate::vmem::PAGE_SIZE * x as usize);
-        unmap(addr, 1, MapType::Zero);
-      }
+      unmap(base, self.zero_page_offset as usize, MapType::Zero);
     }
     debug!("unmapping user memory at {} ({:?})", base, t);
     let adj_base = base.as_usize() + (self.zero_page_offset as usize + 1) * crate::vmem::PAGE_SIZE;

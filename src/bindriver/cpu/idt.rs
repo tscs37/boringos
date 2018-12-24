@@ -131,7 +131,7 @@ extern "x86-interrupt" fn page_fault(
         && page.start_address() <= crate::vmem::CODE_END;
     let prot_violation = error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION);
     let instr_fetch = error_code.contains(PageFaultErrorCode::INSTRUCTION_FETCH);
-    let malformed_table = error_code.contains(PageFaultErrorCode::MALFORMED_TABLE);
+    //let malformed_table = false && error_code.contains(PageFaultErrorCode::MALFORMED_TABLE);
     debug!("checking page fault error, code: {:08x}", error_code);
     if page.start_address() == 0xfffffffffffff000 || page.start_address() == 0 {
         panic!(
@@ -140,10 +140,10 @@ extern "x86-interrupt" fn page_fault(
         );
     }
     crate::vmem::pagetable::ActivePageTable::dump(&page);
-    if malformed_table {
+    /*if malformed_table {
         error!("page table malformed at {:#018x}", addr);
         panic!()
-    }
+    }*/
     if page.start_address() > crate::vmem::PAGE_TABLE_LO {
         error!("page fault should not occur in page table area");
         panic!();
