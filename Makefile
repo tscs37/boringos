@@ -8,18 +8,18 @@ QEMU_PLATFORM = system-x86_64
 BOOTIMG_FILE = target/$(KERNEL_TARGET)/debug/bootimage-$(CRATE).bin
 BIN_FILE = target/$(KERNEL_TARGET)/debug/$(CRATE)
 QEMU_OPTIONS = -net none -m $(QEMU_MEMORY) \
-	-vga cirrus --enable-kvm --cpu host \
+	-vga cirrus -cpu Broadwell \
 	-drive if=ide,format=raw,file=$(BOOTIMG_FILE) \
 	-device isa-debug-exit,iobase=0xf4,iosize=0x04 \
-	-serial mon:stdio --no-reboot -d cpu_reset,int
+	-serial mon:stdio --no-reboot
 
 all: kernel bootimage qemu
 
 release: qemu_release
 
 rustup: .rustup
-	@rustup toolchain add nightly-2018-12-20
-	@rustup override add nightly-2018-12-20
+	@rustup toolchain add nightly-2018-12-31
+	@rustup override add nightly-2018-12-31
 	@rustup component add rust-src
 	@rustup component add rls-preview rust-analysis
 	@cargo install cargo-xbuild --force
@@ -27,11 +27,15 @@ rustup: .rustup
 
 ln_targets: pid0/$(BIN_TARGET).json
 
-pid0/$(BIN_TARGET).json:
+pid0/$(BIN_TARGET).json: $(BIN_TARGET).json
+	@echo "Copy new target configuration for BIN_TARGET"
 	@cp $(PWD)/$(BIN_TARGET).json $(PWD)/pid0/$(BIN_TARGET).json
 
 clean:
-	rm -r target/
+	@echo "Cleaning Kernel"
+	@rm -r target/ || exit 0
+	@echo "Cleaning PID0"
+	@rm -r pid0/target/ || exit 0
 
 bootimage: initramdata/pid0 initramdata/initramfs.bin
 	@echo "Building Kernel image"

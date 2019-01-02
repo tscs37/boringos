@@ -18,5 +18,6 @@
   "has-rpath": false,
   "no-compiler-rt": true,
   "position-independent-executable": false,
-  "has-elf-tls": false
+  "has-elf-tls": false,
+  "stack-probes": true
 }

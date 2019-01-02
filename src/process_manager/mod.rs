@@ -55,10 +55,10 @@ impl Userspace {
         (*sched.kernel_stack).read().map();
         let sched_th = (sched).scheduler_thandle;
         let sched_task = (sched).resolve_th(&sched_th);
-        sched_task.expect("entering userspace requires scheduler")
+        ( sched_task.expect("entering userspace requires scheduler"), sched_th )
       })
       .expect("userspace enter needs lock acquire");
-    unsafe { crate::process_manager::state::switch_to(sched) }
+    unsafe { crate::process_manager::state::switch_to(sched.0, sched.1) }
   }
   pub fn yield_to(&self, th: Option<TaskHandle>) {
     use crate::common::yield_to;

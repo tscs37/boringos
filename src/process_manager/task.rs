@@ -62,6 +62,9 @@ impl Task {
   pub fn state(&self) -> &State {
     &self.state
   }
+  pub fn state_mut(&mut self) -> &mut State {
+    &mut self.state
+  }
   pub fn rip(&self) -> u64 {
     self.state.rip()
   }

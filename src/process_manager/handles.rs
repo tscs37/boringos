@@ -15,32 +15,25 @@ impl Handle {
     Handle(x)
   }
   pub fn gen() -> Handle {
-    if !crate::bindriver::cpu::has_rdrand() {
-      panic!("BoringOS requires a CPU with RDRAND Support");
-    }
-    let rnd: u64;
-    let retry: u32;
-    unsafe{
-      asm!(
-        "
-        mov ecx, 1000
-        retry_handle_gen:
-          rdrand rax
-          jc .done_handle_gen
-          loop retry_handle_gen
-        .done_handle_gen:
-        ":
-        "={rax}"(rnd), "={ecx}"(retry)::"rax", "ecx":"intel", "volatile"
-      );
-    }
-    if retry == 0 { panic!("could not get random number")}
-    Handle(rnd)
+    Handle(crate::bindriver::cpu::rng::get_u64())
   }
 }
 
 impl ::core::fmt::Display for Handle {
     fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+      f.write_fmt(format_args!("{:x}", self.0))
+  }
+}
+
+impl ::core::fmt::LowerHex for Handle {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
       f.write_fmt(format_args!("{:016x}", self.0))
+  }
+}
+
+impl ::core::fmt::UpperHex for Handle {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+      f.write_fmt(format_args!("{:016X}", self.0))
   }
 }
 
@@ -88,9 +81,27 @@ impl TaskHandle {
   }
 }
 
+impl From<u64> for TaskHandle {
+  fn from(t: u64) -> Self {
+    TaskHandle(Handle::from(t))
+  }
+}
+
 impl ::core::fmt::Display for TaskHandle {
-    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
       f.write_fmt(format_args!("{}", self.0))
+  }
+}
+
+impl ::core::fmt::LowerHex for TaskHandle {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+      f.write_fmt(format_args!("{:x}", self.0))
+  }
+}
+
+impl ::core::fmt::UpperHex for TaskHandle {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+      f.write_fmt(format_args!("{:X}", self.0))
   }
 }
 

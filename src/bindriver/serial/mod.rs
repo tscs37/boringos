@@ -34,11 +34,12 @@ impl ::log::Log for SERIAL1 {
             self.try_lock()
                 .and_then(|mut fmt| {
                     fmt.write_fmt(format_args!(
-                        "{} {}~{} - {}\n",
+                        "{:6} {:>30}~{:04} - {}\n",
                         record.level(),
                         record
                             .module_path()
-                            .expect("need module path to log properly"),
+                            .expect("need module path to log properly")
+                            .trim_start_matches("boringos::"),
                         record.line().expect("need line to log properly"),
                         record.args(),
                     )).ok()

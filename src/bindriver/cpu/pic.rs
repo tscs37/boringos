@@ -13,7 +13,7 @@ pub static PICS: spin::Mutex<ChainedPics> =
 
 pub fn init() {
   unsafe { PICS.lock().initialize(); }
-  ::x86_64::instructions::interrupts::enable();
+  //::x86_64::instructions::interrupts::enable();
 }
 
 pub fn end_of_interrupt(id: u8) {

@@ -18,7 +18,7 @@ pub const DATA_END: usize      = 0x0000_8fff_fff0_0000;
 pub const DATA_START: usize    = 0x0000_0200_0000_0000;
 pub const BSS_END: usize       = 0x0000_01ff_ffff_0000;
 pub const BSS_START: usize     = 0x0000_01f0_0000_0000;
-pub const CODE_END: usize      = 0x0000_01f0_0000_0000;
+pub const CODE_END: usize      = 0x0000_01ef_ffff_0000;
 pub const CODE_START: usize    = 0x0000_0000_0101_0000;
 pub const KERNEL_END: usize    = 0x0000_0000_0100_0000;
 pub const KERNEL_START: usize  = 0x0000_0000_0000_0000;
@@ -55,7 +55,7 @@ pub struct PageManager {
 
 impl<'a> PageManager {
   pub unsafe fn init_page_store(&mut self) {
-    debug!("Initializing Page Store...");
+    trace!("Initializing Page Store...");
     match self.pages {
       PageListLink::None => {
         self.pages = PageListLink::PageListEntry(
@@ -71,7 +71,7 @@ impl<'a> PageManager {
       }
       _ => panic!("attempted to double init page store"),
     }
-    debug!("Page Store initialized with free memory: {} KiB", self.free_memory() / 1024);
+    trace!("Page Store initialized with free memory: {} KiB", self.free_memory() / 1024);
   }
   fn get_boot_base(&mut self) -> PhysAddr {
     PhysAddr::new(
@@ -89,7 +89,7 @@ impl<'a> PageManager {
     {
       let pages = self.pages.free_pages();
       let mem = pages * 4096;
-      debug!("Free memory now {} KiB, {} MiB, {} Pages",
+      trace!("Free memory now {} KiB, {} MiB, {} Pages",
         mem / 1024,
         mem / 1024 / 1024,
         pages

@@ -7,6 +7,7 @@
 #![feature(asm)]
 #![feature(naked_functions)]
 #![feature(integer_atomics)]
+#![feature(panic_info_message)] 
 #![no_std]
 #![no_main]
 
@@ -61,15 +62,12 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
   {
     vga_print!("Initializing VMEM...");
     debug!("Probing existing memory ...");
-    debug!("P4CTA: {:#018x}\n", crate::vmem::pagetable::P4 as u64);
-    debug!("P4PTA: {:#018x}\n", boot_info.p4_table_addr);
     assert!(boot_info.p4_table_addr == crate::vmem::pagetable::P4 as u64);
     {
       debug!("Initializing VMEM Slab Allocator...");
       unsafe {
         pager().init_page_store();
       }
-      debug!("Slab allocator initialized, adding memory");
       let mmap = &boot_info.memory_map;
       let mut usable_memory = 0;
       use core::ops::Deref;
@@ -77,7 +75,7 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
       for x in 0..mmap_entries.len() {
         let entry = mmap_entries[x];
         let range = entry.range;
-        debug!(
+        trace!(
           "MMAPE: {:#04x} {:#016x}-{:#016x}: {:?}\n",
           x,
           range.start_addr(),
@@ -88,7 +86,7 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
         match entry.region_type {
           MemoryRegionType::Usable => {
             let size = range.end_addr() - range.start_addr();
-            debug!(
+            trace!(
               "Adding MMAPE {:#04x} to usable memory... {} KiBytes, {} Pages",
               x,
               size / 1024,
@@ -106,15 +104,14 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
           _ => {}
         }
       }
-      debug!(
+      trace!(
         "Total usable memory: {:16} KiB, {:8} MiB",
         usable_memory / 1024,
         usable_memory / 1024 / 1024
       );
       let free_memory = pager().free_memory();
       debug!(
-        "Available memory: {} Bytes, {} KiB, {} MiB, {} Pages",
-        free_memory,
+        "Available memory: {} KiB, {} MiB, {} Pages",
         free_memory / 1024,
         free_memory / 1024 / 1024,
         free_memory / 4096
@@ -132,7 +129,7 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
         match pid0h {
           Ok(pid0h) => {
             sched.register_scheduler(&pid0h);
-            debug!("Scheduler created with handle {}", pid0h);
+            trace!("Scheduler created with handle {}", pid0h);
           }
           Err(()) => {
             error!("Could not create PID0 KProc");
@@ -145,12 +142,12 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
   }
   {
     vga_print!("Initializing Process Environment...");
+    // penv is largely self-initializing at this point
     crate::process_environment::init();
-    //TODO: write penv
-    vga_print_red!("[ OK ]\n");
+    vga_print_green!("[ OK ]\n");
   }
 
-  debug!("entering userspace");
+  info!("entering userspace");
 
   userspace().enter();
 
@@ -169,9 +166,19 @@ pub fn coredump() -> ! {
 #[panic_handler]
 #[no_mangle]
 pub fn panic(info: &PanicInfo) -> ! {
-  error!("Panic occured: {}", info);
+  match info.message() {
+    Some(s) => error!("Panic occured: {}", s),
+    None => error!("Panic had no message"),
+  }
+  match info.location() {
+    Some(s) => error!("Stacktrace: {}~{}", s.file(), s.line()),
+    None => error!("Panic had no stracktrace"),
+  }
   vga_print_red!("\n\n===== PANIC OCCURED IN KERNEL =====\n");
-  vga_print_red!("{}\n", info);
+  match info.message() {
+    Some(s) => vga_print_red!("{}\n\n", s),
+    None => (),
+  }
   hlt_cpu!();
 }
 

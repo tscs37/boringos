@@ -1,6 +1,7 @@
 pub mod gdt;
 pub mod idt;
 pub mod pic;
+pub mod rng;
 use raw_cpuid::{CpuId, FeatureInfo};
 
 fn cpuid() -> CpuId {
