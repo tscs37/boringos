@@ -182,8 +182,20 @@ impl ActivePageTable {
   }
   pub fn map(&mut self, page: Page, flags: EntryFlags, pm: &mut PageManager) -> PhysAddr {
     let frame = unsafe { pm.alloc_page() }.expect("out of memory");
+    self.zero_frame(frame, pm);
     self.map_to(page, frame, flags, pm);
     frame
+  }
+
+  fn zero_frame(&mut self, frame: PhysAddr, pm: &mut PageManager) {
+    //TODO:
+    /*let temp_zone: Page = Page::containing_address(crate::vmem::TEMP_MAP);
+    self.map_to(temp_zone, frame, EntryFlags::WRITABLE | EntryFlags::PRESENT, pm);
+    let page_raw = crate::vmem::TEMP_MAP as *mut [u8; PAGE_SIZE];
+    debug!("clearing memory page at {:#018x}", page_raw as u64);
+    unsafe { core::ptr::write_bytes(page_raw, 0x00, PAGE_SIZE) };
+    let temp_zone: Page = Page::containing_address(crate::vmem::TEMP_MAP);
+    self.unmap(temp_zone, pm);*/
   }
 
   pub fn identity_map(&mut self, page: Page, flags: EntryFlags, pm: &mut PageManager) {
@@ -214,6 +226,7 @@ impl ActivePageTable {
   }
   pub fn unmap(&mut self, page: Page, pm: &mut PageManager) {
     let frame = self.unmap_internal(page, pm);
+    self.zero_frame(frame, pm);
     unsafe { pm.free_page(frame) }
   }
 }

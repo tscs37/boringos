@@ -5,7 +5,7 @@ use core::cell::RefCell;
 use crate::vmem::mapper::{map, map_zero, unmap, MapType};
 use crate::vmem::PhysAddr;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct MemoryUserRef(*mut Rc<RefCell<MemoryUser>>);
 
 impl core::ops::Deref for MemoryUserRef {

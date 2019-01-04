@@ -1,7 +1,6 @@
 use crate::process_manager::{Userspace, Task, TaskHandle};
 use crate::vmem::PageManager;
 use core::cell::{Ref, RefMut};
-use alloc::sync::Arc;
 
 #[macro_use]
 mod macros;
@@ -19,11 +18,11 @@ pub fn userspace<'a>() -> Ref<'a, Userspace> {
 }
 
 pub fn kinfo<'a>() -> spin::RwLockReadGuard<'a, KernelInfo> {
-  kinfo::KERNEL_INFO.read()
+  KERNEL_INFO.read()
 }
 
 pub fn kinfo_mut<'a>() -> spin::RwLockWriteGuard<'a, KernelInfo> {
-  kinfo::KERNEL_INFO.write()
+  KERNEL_INFO.write()
 }
 
 pub fn with_current_task<T>(run: impl Fn(Option<Ref<Task>>) -> T) -> Result<T, ()> {
@@ -73,5 +72,5 @@ pub extern "C" fn yield_to(t: u64) {
   let th = TaskHandle::from_c(t);
   debug!("Yielding to task {:?}", th);
   use crate::process_manager::TaskHandle;
-  crate::userspace().in_scheduler_mut_spin(|mut sched| sched.yield_to(Some(th)));
+  userspace().in_scheduler_mut_spin(|mut sched| sched.yield_to(Some(th)));
 }

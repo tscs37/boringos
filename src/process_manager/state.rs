@@ -85,6 +85,7 @@ impl State {
           if ph.p_type == goblin::elf::program_header::PT_LOAD {
             let filer = ph.file_range();
             let vmr = ph.vm_range();
+            debug!("loading ELF section: {:#018x}", vmr.start);
             if ph.is_read() {
               // this is not according to ELF spec by a lot
               // but the linker is responsible here
@@ -93,9 +94,9 @@ impl State {
               let base = filer.start + (&elf_ptr[0] as *const u8 as usize);
               trace!("base is {:#018x}, checking inmemory base...", base);
               let is_code_section = !ph.is_write() && vmr.start >= crate::vmem::CODE_START && vmr.end <= crate::vmem::CODE_END;
-              let is_bss_section = ph.is_read() && !ph.is_executable() && vmr.start >= crate::vmem::BSS_START && vmr.end <= crate::vmem::BSS_END;
+              let is_bss_section = ph.is_read() && vmr.start >= crate::vmem::BSS_START && vmr.end <= crate::vmem::BSS_END;
               if !is_code_section && !is_bss_section {
-                panic!("bad section in ELF load");
+                panic!("bad section in ELF load: {:#018x}, RWX ({},{},{})", vmr.start, ph.is_read(), ph.is_write(), ph.is_executable());
               }
               trace!("PHFlags: R={}, W={}, X={}, {:#018x}, Code={}, BSS={}", ph.is_read(), ph.is_write(), ph.is_executable(), vmr.start, is_code_section, is_bss_section);
               let cur_real_base = {
@@ -129,13 +130,12 @@ impl State {
                   panic!("offset on non-code memory");
                 }
               }
-              trace!(
-                "PH, {:#018x} : {:#08x} ({:#08x}) -> {:#018x} ({:#018x})",
+              debug!(
+                "PH, {:#018x} : {:#08x} ({:#08x}) -> {:#018x}",
                 base,
                 filer.start,
                 filer.len(),
-                vmr.start,
-                vmr.len()
+                vmr.start
               );
               unsafe {
                 core::intrinsics::copy_nonoverlapping(
@@ -147,6 +147,7 @@ impl State {
             } else {
               return Err(StateError::ELFBadPH);
             }
+            debug!("loaded ELF section: {:#018x}", vmr.start);
           }
         }
         code_memory.unmap();
@@ -231,6 +232,9 @@ impl State {
   }
   pub fn raise_page_limit(&mut self, pages: u16) -> u64 {
     self.page_limit += pages as usize;
+    self.page_limit as u64
+  }
+  pub fn page_limit(&self) -> u64 {
     self.page_limit as u64
   }
   #[cold]

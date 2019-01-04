@@ -1,0 +1,3 @@
+[submodule "ralloc"]
+	path = ralloc
+	url = https://github.com/redox-os/ralloc

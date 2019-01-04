@@ -6,6 +6,10 @@
 #[macro_use]
 extern crate symrfp;
 extern crate ralloc;
+#[global_allocator]
+static ALLOCATOR: ralloc::Allocator = ralloc::Allocator{};
+
+extern crate alloc;
 
 use symrfp::{SymbolType, get_symbol};
 
@@ -41,9 +45,19 @@ fn task() {
     // get some more pages
     import_symbol!(bos_raise_page_limit, fn(u16) -> u64);
     sp.write_fmt(format_args!("New pagelimit: {}\n", bos_raise_page_limit(1028)));
-    // what?
-    //import_symbol!(bos_raise_page_limit, fn(u16) -> u64);
     sp.write_fmt(format_args!("New pagelimit: {}\n", bos_raise_page_limit(1028)));
+  }
+  {
+    import_symbol!(bos_log_debug, fn(&str));
+    bos_log_debug("testing memory allocator");
+    use alloc::alloc::{alloc, dealloc, Layout};
+    unsafe{
+      let layout = Layout::new::<u16>();
+      let ptr = alloc(layout);
+      *(ptr as *mut u16) = 42;
+      assert_eq!(*(ptr as *mut u16), 42);
+      dealloc(ptr, layout);
+    }
   }
   /*let bos_get_initramfs = get_symbol(SymbolType::KernelCall, "bos_get_initramfs") ;
   let bos_new_task = get_symbol(SymbolType::KernelCall, "bos_new_task");

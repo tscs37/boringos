@@ -13,20 +13,21 @@
   "features": "-mmx,-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-3dnow,-3dnowa,-avx,-avx2,+soft-float",
   "disable-redzone": true,
   "eliminate-frame-pointer": false,
-  "relocation-model": "static",
+  "relocation-model": "default",
   "code-model": "large",
   "has-rpath": false,
   "no-compiler-rt": true,
-  "position-independent-executable": false,
+  "position-independent-executable": true,
+  "dynamic-linking": false,
   "has-elf-tls": false,
   "stack-probes": true,
   "pre-link-args": {
     "ld.lld": [
       "--entry=main", 
-      "--Tdata=0x0000020000000000",
-      "--Tbss=0x000001f000000000",
+       "--Tbss=0x000001f000010000",
+      "--Tdata=0x000001f000000000",
       "--Ttext=0x0000000001020000",
-      "-Bstatic"
+      "--no-undefined", "--no-rosegment", "--fatal-warnings", "-Bstatic"
     ]
   }
 }

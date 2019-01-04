@@ -7,7 +7,17 @@
 #![feature(asm)]
 #![feature(naked_functions)]
 #![feature(integer_atomics)]
-#![feature(panic_info_message)] 
+#![feature(panic_info_message)]
+#![feature(const_fn)]
+#![feature(exclusive_range_pattern)]
+#![feature(try_trait)]
+
+#![allow(unused_variables,dead_code)]
+
+#![warn(missing_copy_implementations,unused_import_braces,unused_results)]
+
+#![deny(unused_qualifications,keyword_idents,unused_extern_crates,stable-features)]
+
 #![no_std]
 #![no_main]
 
@@ -32,8 +42,6 @@ mod process_manager;
 mod version;
 mod vmem;
 
-const BOOT_MEMORY_PAGES: usize = 32;
-
 use self::alloc::sync::Arc;
 use self::process_manager::Userspace;
 use self::vmem::PageManager;
@@ -43,13 +51,7 @@ use spin::Mutex;
 
 pub use crate::common::*;
 
-pub static PAGER: Mutex<PageManager> = Mutex::new(PageManager {
-  first_page_mem: crate::vmem::StaticPage::new(),
-  first_range_mem: crate::vmem::StaticPage::new(),
-  boot_pages: [crate::vmem::StaticPage::new(); BOOT_MEMORY_PAGES],
-  use_boot_memory: true,
-  pages: crate::vmem::pagelist::PageListLink::None,
-});
+pub static PAGER: Mutex<PageManager> = Mutex::new(PageManager::new());
 #[global_allocator]
 static MEM_PROVIDER: SafeZoneAllocator = SafeZoneAllocator::new(&PAGER);
 static mut USERSPACE: Option<Arc<RefCell<Userspace>>> = None;
@@ -116,6 +118,7 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
         free_memory / 1024 / 1024,
         free_memory / 4096
       );
+      pager().seal_boot_memory();
     }
     vga_print_green!("[ OK ]\n");
   }

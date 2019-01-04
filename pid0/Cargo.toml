@@ -15,7 +15,11 @@ path = "../symrfp"
 
 [dependencies.ralloc]
 git = "https://github.com/redox-os/ralloc.git"
-default-features = false
+#default-features = false
 
 [patch.'https://github.com/redox-os/ralloc.git']
+ralloc_shim = { path = "../ralloc_shim" }
+ralloc = { path = "../ralloc" }
+
+[patch.'file:///home/tim/projects/rust/boringos/ralloc/shim']
 ralloc_shim = { path = "../ralloc_shim" }

@@ -11,8 +11,8 @@ macro_rules! make_stack {
   ($size:expr) => {{
       const STACK_SIZE: usize = ($size);
       #[repr(align(4096))]
-      struct STACK_CONTAINER([u8; STACK_SIZE]);
-      static mut STACK: STACK_CONTAINER = STACK_CONTAINER([0; STACK_SIZE]);
+      struct StackContainer([u8; STACK_SIZE]);
+      static mut STACK: StackContainer = StackContainer([0; STACK_SIZE]);
       let stack_start = VirtAddr::from_ptr(unsafe{&STACK});
       let stack_end = stack_start + STACK_SIZE;
       stack_end

@@ -1,4 +1,3 @@
-extern crate x86_64;
 use crate::bindriver::cpu::pic::PIC_1_OFFSET;
 use x86_64::structures::idt::*;
 pub const TIMER_INTERRUPT_ID: u8 = PIC_1_OFFSET;
@@ -113,24 +112,35 @@ extern "x86-interrupt" fn page_fault(
     error_code: u64,
 ) {
     // LLVM fucks up the stack alignment, so we unfuck it and force the value through a sensible place
-    unsafe{asm!("sub rsp, 8
-    sub rbp, 8"::::"intel", "volatile")};
+    {
+        #[cfg(debug)]
+        unsafe{asm!("sub rsp, 8
+        sub rbp, 8"::::"intel", "volatile")};
+    }
+    let error_code = error_code.clone();
+    {
+        #[cfg(debug)]
+        unsafe{asm!("add rsp, 8
+        add rbp, 8"::::"intel", "volatile")};
+    }
     let error_code = PageFaultErrorCode::from_bits(error_code)
         .expect(&format!("error_code has reserved bits set: {:#018x}", error_code))
         .clone();
-    unsafe{asm!("add rsp, 8
-    add rbp, 8"::::"intel", "volatile")};
-    let caused_by_prot_violation = error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION);
-    let caused_by_write = error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE);
-    let caused_by_usermode = error_code.contains(PageFaultErrorCode::USER_MODE);
-    let caused_by_instr_fetch = error_code.contains(PageFaultErrorCode::INSTRUCTION_FETCH);
-    let caused_by_malformed_table = false && error_code.contains(PageFaultErrorCode::MALFORMED_TABLE);
+    debug!("checking page fault error, code: {:08x}", error_code);
     let addr: usize;
     unsafe {
         asm!("
         mov rax, cr2
         ":"={rax}"(addr)::"rax", "memory":"intel", "volatile")
     };
+    debug!("cr2 register says it was {:#018x}", addr);
+
+    let caused_by_prot_violation = error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION);
+    let caused_by_write = error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE);
+    let caused_by_usermode = error_code.contains(PageFaultErrorCode::USER_MODE);
+    let caused_by_instr_fetch = error_code.contains(PageFaultErrorCode::INSTRUCTION_FETCH);
+    let caused_by_malformed_table = false && error_code.contains(PageFaultErrorCode::MALFORMED_TABLE);
+
     use crate::vmem::pagetable::Page;
     use crate::vmem::{mapper::map_new, mapper::MapType, PhysAddr, PAGE_SIZE};
     let page = Page::containing_address(addr);
@@ -143,9 +153,6 @@ extern "x86-interrupt" fn page_fault(
         && page.start_address() <= crate::vmem::BSS_END;
     let is_codepage = page.start_address() >= crate::vmem::CODE_START
         && page.start_address() <= crate::vmem::CODE_END;
-
-    trace!("checking page fault error, code: {:08x}", error_code);
-    trace!("cr2 register says it was {:#018x}", addr);
     if page.start_address() == 0xfffffffffffff000 || page.start_address() == 0 {
         panic!(
             "critical page fault in page table area or zero memory: {:#018x}",
@@ -182,12 +189,12 @@ extern "x86-interrupt" fn page_fault(
             let stack_size = stack_size_org - 2; // Allow touching up to 2 pages early
             let expected_paddr = PhysAddr::new_usize_or_abort(
                 crate::vmem::STACK_START
-                    - (crate::vmem::PAGE_SIZE
+                    - (PAGE_SIZE
                         * (stack_size)),
             );
             let laststack_paddr = PhysAddr::new_usize_or_abort(
                 crate::vmem::STACK_START
-                    - (crate::vmem::PAGE_SIZE
+                    - (PAGE_SIZE
                         * (stack_size_org)),
             );
             if expected_paddr <= paddr {
@@ -197,13 +204,16 @@ extern "x86-interrupt" fn page_fault(
                 );
                 panic!("task touched stack memory early, that's nasty");
             }
-            let diff_pages = PhysAddr::new_usize_or_abort(expected_paddr.as_usize() - paddr.as_usize()).as_usize() / crate::vmem::PAGE_SIZE + 1;
+            let diff_pages = PhysAddr::new_usize_or_abort(
+                expected_paddr.as_usize() - paddr.as_usize()).as_usize() / PAGE_SIZE + 1;
             if diff_pages > 1 {
                 // sometimes rust jumps a page or two ahead, we yell at it but allow it
                 // TODO: include page jumping in task statistics and kill process if it does this too often
-                warn!("task jumped {} pages instead of 1, wanted {} but got {}", diff_pages, laststack_paddr, paddr);
+                warn!("task jumped {} pages instead of 1, wanted {} but got {}", 
+                    diff_pages, laststack_paddr, paddr);
                 for x in 0..diff_pages {
-                    let tar_addr = PhysAddr::new_usize_or_abort(laststack_paddr.as_usize() + x * crate::vmem::PAGE_SIZE);
+                    let tar_addr = PhysAddr::new_usize_or_abort(
+                        laststack_paddr.as_usize() + x * PAGE_SIZE);
                     trace!("mapping user stack page to {:#018x}", tar_addr.as_u64());
                     let new_page = map_new(tar_addr, MapType::Stack);
                     crate::kinfo_mut().add_stack_page(new_page);
@@ -232,13 +242,13 @@ extern "x86-interrupt" fn page_fault(
                     if is_codepage {
                         PhysAddr::new_usize_or_abort(
                         crate::vmem::CODE_START
-                            + (crate::vmem::PAGE_SIZE
+                            + (PAGE_SIZE
                                 * (crate::kinfo().get_code_memory_ref_size())),
                         )
                     } else if is_bsspage {
                         PhysAddr::new_usize_or_abort(
                         crate::vmem::BSS_START
-                            + (crate::vmem::PAGE_SIZE
+                            + (PAGE_SIZE
                                 * (crate::kinfo().get_bss_memory_ref_size())),
                         )
                     } else {

@@ -1,6 +1,4 @@
-extern crate pic8259_simple;
-
-use self::pic8259_simple::ChainedPics;
+use pic8259_simple::ChainedPics;
 use spin;
 
 pub const PIC_1_OFFSET: u8 = 32;

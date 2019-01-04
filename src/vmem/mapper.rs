@@ -49,7 +49,7 @@ pub fn map_zero(addr: PhysAddr, size: u16) {
   let pm = &mut crate::pager();
   let flags = MapType::Zero.flags();
   for x in 0..size {
-    let addr = addr.as_usize() + x as usize * crate::vmem::PAGE_SIZE;
+    let addr = addr.as_usize() + x as usize * PAGE_SIZE;
     trace!("map zero: {:#018x}", addr);
     apt.map_to(
     Page::containing_address(addr),

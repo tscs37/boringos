@@ -19,7 +19,7 @@ pub fn init() {
 
 impl ::log::Log for SERIAL1 {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Debug && !(false
+        metadata.level() <= Level::Trace && !(false
             // put in blacklisted debug modules here
             || metadata.target() == "slabmalloc"
             || metadata.target() == "boringos::vmem::pagelist"

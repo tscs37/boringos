@@ -88,7 +88,7 @@ pub fn print_green(args: fmt::Arguments) {
     let mut w = WRITER.lock();
     let old_color = w.color_code;
     w.color_code = helper::ColorCode::new(helper::Color::Green, helper::Color::Black);
-    w.write_fmt(args).unwrap();
+    w.write_fmt(args).expect("could not write to vga buffer");
     w.color_code = old_color;
 }
 
@@ -99,7 +99,7 @@ pub fn print_red(args: fmt::Arguments) {
     w.and_then(|mut w| {
         let old_color = w.color_code;
         w.color_code = helper::ColorCode::new(helper::Color::Red, helper::Color::Black);
-        w.write_fmt(args).unwrap();
+        w.write_fmt(args).expect("could not write to vga buffer");
         w.color_code = old_color;
         Some(w)
     }).expect("need to print to vga");

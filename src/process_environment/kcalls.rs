@@ -51,7 +51,7 @@ pub fn bos_get_page_limit() -> u64 {
   with_current_task(|task| {
     match task {
       None => 0,
-      Some(mut task) => task.state().page_limit(),
+      Some(task) => task.state().page_limit(),
     }
   }).unwrap_or_default()
 }

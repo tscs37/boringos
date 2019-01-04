@@ -7,6 +7,8 @@ use crate::vmem::pagelist::PageListLink;
 
 pub const PAGE_SIZE: usize = 4096;
 
+const BOOT_MEMORY_PAGES: usize = 16;
+
 pub const PAGE_TABLE_LO: usize = 0xffff_ff80_0000_0000;
 pub const KSTACK_GUARD: usize  = 0xffff_ff79_ffff_0000;
 pub const KSTACK_START: usize  = 0xffff_ff79_fffe_0000;
@@ -20,7 +22,8 @@ pub const BSS_END: usize       = 0x0000_01ff_ffff_0000;
 pub const BSS_START: usize     = 0x0000_01f0_0000_0000;
 pub const CODE_END: usize      = 0x0000_01ef_ffff_0000;
 pub const CODE_START: usize    = 0x0000_0000_0101_0000;
-pub const KERNEL_END: usize    = 0x0000_0000_0100_0000;
+pub const TEMP_MAP: usize      = 0x0000_0000_0081_0000;
+pub const KERNEL_END: usize    = 0x0000_0000_0080_0000;
 pub const KERNEL_START: usize  = 0x0000_0000_0000_0000;
 pub const UGUARD_PAGE: usize   = 0xffff_ff00_0000_0000;
 
@@ -46,14 +49,23 @@ impl StaticPage {
 pub struct PageManager {
   pub first_page_mem: StaticPage,
   pub first_range_mem: StaticPage,
-  pub boot_pages: [StaticPage; crate::BOOT_MEMORY_PAGES],
+  pub boot_pages: [StaticPage; BOOT_MEMORY_PAGES],
   pub use_boot_memory: bool,
   // list of 4k pages
   //pub pages: Option<Arc<Uns
-  pub pages: pagelist::PageListLink,
+  pub pages: PageListLink,
 }
 
 impl<'a> PageManager {
+  pub const fn new() -> PageManager {
+    PageManager {
+      first_page_mem: crate::vmem::StaticPage::new(),
+      first_range_mem: crate::vmem::StaticPage::new(),
+      boot_pages: [crate::vmem::StaticPage::new(); BOOT_MEMORY_PAGES],
+      use_boot_memory: true,
+      pages: crate::vmem::pagelist::PageListLink::None,
+    }
+  }
   pub unsafe fn init_page_store(&mut self) {
     trace!("Initializing Page Store...");
     match self.pages {
@@ -95,6 +107,9 @@ impl<'a> PageManager {
         pages
       )
     }
+  }
+  pub fn seal_boot_memory(&mut self) {
+    self.use_boot_memory = false
   }
   pub fn free_memory(&self) -> usize {
     match self.pages {

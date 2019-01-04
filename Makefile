@@ -5,7 +5,7 @@ BIN_TARGET = x86_64-boringosbase
 CRATE = boringos
 QEMU_MEMORY = 512
 QEMU_PLATFORM = system-x86_64
-BOOTIMG_FILE = target/$(KERNEL_TARGET)/debug/bootimage-$(CRATE).bin
+BOOTIMG_FILE = target/$(KERNEL_TARGET)/release/bootimage-$(CRATE).bin
 BIN_FILE = target/$(KERNEL_TARGET)/debug/$(CRATE)
 QEMU_OPTIONS = -net none -m $(QEMU_MEMORY) \
 	-vga cirrus -cpu Broadwell \
@@ -13,13 +13,15 @@ QEMU_OPTIONS = -net none -m $(QEMU_MEMORY) \
 	-device isa-debug-exit,iobase=0xf4,iosize=0x04 \
 	-serial mon:stdio --no-reboot
 
-all: kernel bootimage qemu
+build: bootimage
+
+all: bootimage qemu
 
 release: qemu_release
 
 rustup: .rustup
-	@rustup toolchain add nightly-2018-12-31
-	@rustup override add nightly-2018-12-31
+	@rustup toolchain add nightly-2019-01-01
+	@rustup override add nightly-2019-01-01
 	@rustup component add rust-src
 	@rustup component add rls-preview rust-analysis
 	@cargo install cargo-xbuild --force
@@ -31,15 +33,19 @@ pid0/$(BIN_TARGET).json: $(BIN_TARGET).json
 	@echo "Copy new target configuration for BIN_TARGET"
 	@cp $(PWD)/$(BIN_TARGET).json $(PWD)/pid0/$(BIN_TARGET).json
 
-clean:
+clean: clean_kernel clean_pid0
+
+clean_kernel:
 	@echo "Cleaning Kernel"
 	@rm -r target/ || exit 0
+
+clean_pid0:
 	@echo "Cleaning PID0"
 	@rm -r pid0/target/ || exit 0
 
 bootimage: initramdata/pid0 initramdata/initramfs.bin
 	@echo "Building Kernel image"
-	@bootimage build --target $(KERNEL_TARGET).json
+	@bootimage build --release --target $(KERNEL_TARGET).json
 
 initramdata/pid0: ln_targets pid0_build
 	@cp pid0/target/$(BIN_TARGET)/debug/pid0 initramdata/pid0
