@@ -113,13 +113,11 @@ extern "x86-interrupt" fn page_fault(
 ) {
     // LLVM fucks up the stack alignment, so we unfuck it and force the value through a sensible place
     {
-        #[cfg(debug)]
         unsafe{asm!("sub rsp, 8
         sub rbp, 8"::::"intel", "volatile")};
     }
     let error_code = error_code.clone();
     {
-        #[cfg(debug)]
         unsafe{asm!("add rsp, 8
         add rbp, 8"::::"intel", "volatile")};
     }

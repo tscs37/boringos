@@ -176,8 +176,10 @@ impl PagePool for PageMapWrapper {
 
 //TODO: implement debug for PageMap
 
-assert_eq_size!(check_phys_addr_size; PhysAddr,    u64);
-assert_eq_size!(check_page_list_size; PageMap,    [u8; 4096]);
+assert_eq_size!(check_phys_addr_size; PhysAddr,                 u64);
+assert_eq_size!(check_page_map_size; PageMap,                   [u8; 4096]);
+assert_eq_size!(check_page_map_wrapper; PageMapWrapper,         u64);
+assert_eq_size!(check_page_map_wrapopt; Option<PageMapWrapper>, u64);
 
 #[cfg(test)]
 mod test {

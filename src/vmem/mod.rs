@@ -44,17 +44,25 @@ impl StaticPage {
   }
 }
 
+use self::pagelist::PagePool;
+
 #[repr(C)]
 #[repr(align(4096))]
 pub struct PageManager {
-  pub first_page_mem: StaticPage,
-  pub first_range_mem: StaticPage,
-  pub boot_pages: [StaticPage; BOOT_MEMORY_PAGES],
-  pub use_boot_memory: bool,
+  pagepool: PagePool,
+  //pub first_page_mem: StaticPage,
+  //pub first_range_mem: StaticPage,
+  //pub boot_pages: [StaticPage; BOOT_MEMORY_PAGES],
+  //pub use_boot_memory: bool,
   // list of 4k pages
   //pub pages: Option<Arc<Uns
-  pub pages: PageListLink,
+  //pub pages: PageListLink,
 }
+
+// Memory allocated for bootstrapping
+static mut boot_pages: [StaticPage; BOOT_MEMORY_PAGES] = 
+  [crate::vmem::StaticPage::new(); BOOT_MEMORY_PAGES];
+
 
 impl<'a> PageManager {
   pub const fn new() -> PageManager {

@@ -14,9 +14,9 @@
 
 #![allow(unused_variables,dead_code)]
 
-#![warn(missing_copy_implementations,unused_import_braces,unused_results)]
+#![warn(unused_import_braces)]
 
-#![deny(unused_qualifications,keyword_idents,unused_extern_crates,stable-features)]
+#![deny(unused_qualifications,keyword_idents,unused_extern_crates,stable_features)]
 
 #![no_std]
 #![no_main]
