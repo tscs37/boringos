@@ -13,7 +13,6 @@ pub struct KernelInfo {
   current_task_handle_int: AtomicU64,
   current_code_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
   current_data_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
-  current_bss_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
   current_stack_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
   zero_page_addr: AtomicU64,
   root_task_env: Option<Arc<TaskEnvironment>>,
@@ -26,7 +25,6 @@ impl KernelInfo {
       current_task_handle_int: AtomicU64::new(0),
       current_code_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
       current_data_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
-      current_bss_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
       current_stack_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
       zero_page_addr: AtomicU64::new(0),
       root_task_env: None,
@@ -84,12 +82,6 @@ impl KernelInfo {
     let mur = MemoryUserRef::from(ptr);
     self.add_page_to_mur(p, mur)
   }
-  pub fn add_bss_page(&self, p: PhysAddr) {
-    trace!("adding {} to active bss memory", p);
-    let ptr = self.current_bss_memory_ref_int.load(Ordering::SeqCst);
-    let mur = MemoryUserRef::from(ptr);
-    self.add_page_to_mur(p, mur)
-  }
   pub fn add_data_page(&self, p: PhysAddr) {
     trace!("adding {} to active data memory", p);
     let ptr = self.current_data_memory_ref_int.load(Ordering::SeqCst);
@@ -120,11 +112,6 @@ impl KernelInfo {
     let mur = MemoryUserRef::from(ptr);
     mur.page_count()
   }
-  pub fn get_bss_memory_ref_size(&self) -> usize {
-    let ptr = self.current_bss_memory_ref_int.load(Ordering::SeqCst);
-    let mur = MemoryUserRef::from(ptr);
-    mur.page_count()
-  }
   pub fn set_memory_ref(&self, v: &Memory) -> Memory {
     trace!("setting new active memory: {:?}", v);
     match v {
@@ -141,11 +128,6 @@ impl KernelInfo {
       Memory::Stack(s) => Memory::Stack(MemoryUserRef::from(
         self
           .current_stack_memory_ref_int
-          .swap(s.into(), Ordering::SeqCst),
-      )),
-      Memory::Static(s) => Memory::Static(MemoryUserRef::from(
-        self
-          .current_bss_memory_ref_int
           .swap(s.into(), Ordering::SeqCst),
       )),
       _ => panic!("tried to assign non-code memory to code memory"),

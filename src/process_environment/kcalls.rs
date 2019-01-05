@@ -12,7 +12,15 @@ pub fn bos_log_trace(msg: &str) {
   trace!("{}", msg);
 }
 
+pub fn bos_log_trace_fmt(msg: core::fmt::Arguments) {
+  debug!("{}", msg);
+}
+
 pub fn bos_log_debug(msg: &str) {
+  debug!("{}", msg);
+}
+
+pub fn bos_log_debug_fmt(msg: core::fmt::Arguments) {
   debug!("{}", msg);
 }
 
@@ -20,11 +28,23 @@ pub fn bos_log_info(msg: &str) {
   info!("{}", msg);
 }
 
+pub fn bos_log_info_fmt(msg: core::fmt::Arguments) {
+  info!("{}", msg);
+}
+
 pub fn bos_log_warn(msg: &str) {
   warn!("{}", msg);
 }
 
+pub fn bos_log_warn_fmt(msg: core::fmt::Arguments) {
+  warn!("{}", msg);
+}
+
 pub fn bos_log_error(msg: &str) {
+  error!("{}", msg);
+}
+
+pub fn bos_log_error_fmt(msg: core::fmt::Arguments) {
   error!("{}", msg);
 }
 
@@ -38,6 +58,7 @@ pub fn bos_yield(th: u64) {
 // This does not mean the OS is able to allocate these pages
 // The call returns the new page limit
 pub fn bos_raise_page_limit(pages: u16) -> u64 {
+  trace!("raising page limit by {}", pages);
   with_current_task_mut(|task| {
     match task {
       None => 0,
@@ -56,15 +77,14 @@ pub fn bos_get_page_limit() -> u64 {
   }).unwrap_or_default()
 }
 
-// Returns number of pages allocated for data, not counting stack, bss or code
+// Returns number of pages allocated for data, not counting stack or code
 pub fn bos_get_page_count_data() -> u64 {
   kinfo().get_data_memory_ref_size() as u64
 }
 
-// Returns number of pages allocated for non-data, counting stack, bss and code
+// Returns number of pages allocated for non-data, counting stack and code
 pub fn bos_get_page_count_nondata() -> u64 {
   kinfo().get_code_memory_ref_size() as u64
-  + kinfo().get_bss_memory_ref_size() as u64
   + kinfo().get_stack_memory_ref_size() as u64
 }
 

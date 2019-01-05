@@ -11,6 +11,7 @@
 #![feature(const_fn)]
 #![feature(exclusive_range_pattern)]
 #![feature(try_trait)]
+#![feature(try_from)]
 
 #![allow(unused_variables,dead_code)]
 
@@ -67,9 +68,7 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
     assert!(boot_info.p4_table_addr == crate::vmem::pagetable::P4 as u64);
     {
       debug!("Initializing VMEM Slab Allocator...");
-      unsafe {
-        pager().init_page_store();
-      }
+      pager().init().expect("init on pager failed");
       let mmap = &boot_info.memory_map;
       let mut usable_memory = 0;
       use core::ops::Deref;
@@ -100,7 +99,6 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
                 crate::vmem::pagelist::PhysAddr::new_unchecked(range.start_addr()),
                 (size / 4096) as usize - 1,
               );
-              pager().use_boot_memory = false;
             };
           }
           _ => {}
@@ -118,7 +116,6 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
         free_memory / 1024 / 1024,
         free_memory / 4096
       );
-      pager().seal_boot_memory();
     }
     vga_print_green!("[ OK ]\n");
   }
@@ -169,12 +166,13 @@ pub fn coredump() -> ! {
 #[panic_handler]
 #[no_mangle]
 pub fn panic(info: &PanicInfo) -> ! {
+
   match info.message() {
     Some(s) => error!("Panic occured: {}", s),
     None => error!("Panic had no message"),
   }
   match info.location() {
-    Some(s) => error!("Stacktrace: {}~{}", s.file(), s.line()),
+    Some(s) => error!("Panicked at {}~{}", s.file(), s.line()),
     None => error!("Panic had no stracktrace"),
   }
   vga_print_red!("\n\n===== PANIC OCCURED IN KERNEL =====\n");

@@ -22,6 +22,7 @@ impl Task {
       name: name.into(),
     }
   }
+  #[deprecated]
   pub fn new_ktask_for_fn<S>(f: *const u8, name: S) -> Task where S: Into<String> {
     warn!("new ktask, consider using a non-ktask if possible");
     let f = crate::vmem::PhysAddr::new(f as u64).expect("kernelstate needs function pointer");

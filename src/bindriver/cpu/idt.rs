@@ -147,8 +147,8 @@ extern "x86-interrupt" fn page_fault(
         && page.start_address() <= crate::vmem::KSTACK_START + PAGE_SIZE;
     let is_ustack = page.start_address() >= crate::vmem::STACK_END
         && page.start_address() <= crate::vmem::STACK_START + PAGE_SIZE;
-    let is_bsspage = page.start_address() >= crate::vmem::BSS_START
-        && page.start_address() <= crate::vmem::BSS_END;
+    let is_datapage = page.start_address() >= crate::vmem::DATA_START
+        && page.start_address() <= crate::vmem::DATA_END;
     let is_codepage = page.start_address() >= crate::vmem::CODE_START
         && page.start_address() <= crate::vmem::CODE_END;
     if page.start_address() == 0xfffffffffffff000 || page.start_address() == 0 {
@@ -226,7 +226,7 @@ extern "x86-interrupt" fn page_fault(
             return;
         } else if page.start_address() == crate::vmem::KSTACK_GUARD {
             panic!("stack in kernel stack guard");
-        } else if is_codepage || is_bsspage {
+        } else if is_codepage || is_datapage {
             if caused_by_instr_fetch {
                 // Doesn't work?
                 panic!("task could not execute in executable memory");
@@ -243,11 +243,11 @@ extern "x86-interrupt" fn page_fault(
                             + (PAGE_SIZE
                                 * (crate::kinfo().get_code_memory_ref_size())),
                         )
-                    } else if is_bsspage {
+                    } else if is_datapage {
                         PhysAddr::new_usize_or_abort(
-                        crate::vmem::BSS_START
+                        crate::vmem::DATA_START
                             + (PAGE_SIZE
-                                * (crate::kinfo().get_bss_memory_ref_size())),
+                                * (crate::kinfo().get_data_memory_ref_size())),
                         )
                     } else {
                         panic!("Neither BSS or Code page in BSS or Code only path of page fault");
@@ -262,19 +262,19 @@ extern "x86-interrupt" fn page_fault(
                 }
                 let new_page = map_new(paddr, MapType::Data);
                 trace!(
-                    "mapped new code memory, notifying kernel for page {}<->{}",
+                    "mapped new code or data memory, notifying kernel for page {}<->{}",
                     new_page, paddr
                 );
                 if is_codepage {
                     crate::kinfo_mut().add_code_page(new_page);
-                } else if is_bsspage {
-                    crate::kinfo_mut().add_bss_page(new_page);
+                } else if is_datapage {
+                    crate::kinfo_mut().add_data_page(new_page);
                 } else {
                     panic!("Neither BSS or Code page in BSS or Code only path of page fault");
                 }
                 return;
             } else {
-                panic!("tried to access bss or code memory outside mapping zone: {}, BSS={}, Code={}", paddr, is_bsspage, is_codepage);
+                panic!("tried to access bss or code memory outside mapping zone: {}, Data={}, Code={}", paddr, is_datapage, is_codepage);
             }
         } else {
             panic!("cannot map: {:#018x}", page.start_address());

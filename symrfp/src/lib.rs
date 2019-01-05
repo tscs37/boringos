@@ -32,6 +32,7 @@ macro_rules! import_symbol {
 }
 
 #[repr(u16)]
+#[derive(Debug, Copy, Clone)]
 pub enum SymbolType {
   TestSymbolResolver = 0x0,
   TaskData = 0x1,

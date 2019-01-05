@@ -1,6 +1,8 @@
 use crate::process_manager::{Userspace, Task, TaskHandle};
 use crate::vmem::PageManager;
 use core::cell::{Ref, RefMut};
+use crate::vmem::PhysAddr;
+use crate::vmem::pagelist::{PagePoolAllocationError, PagePoolReleaseError};
 
 #[macro_use]
 mod macros;
@@ -58,11 +60,11 @@ pub fn pager<'a>() -> ::spin::MutexGuard<'a, PageManager> {
   p
 }
 
-pub fn alloc_page() -> Option<crate::vmem::PhysAddr> {
+pub fn alloc_page() -> Result<PhysAddr, PagePoolAllocationError> {
   unsafe { pager().alloc_page() }
 }
 
-pub fn release_page(pa: crate::vmem::PhysAddr) {
+pub fn release_page(pa: PhysAddr) -> Result<(), PagePoolReleaseError>{
   unsafe { pager().free_page(pa) }
 }
 

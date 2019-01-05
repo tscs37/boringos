@@ -24,7 +24,6 @@
   "pre-link-args": {
     "ld.lld": [
       "--entry=main", 
-       "--Tbss=0x000001f000010000",
       "--Tdata=0x000001f000000000",
       "--Ttext=0x0000000001020000",
       "--no-undefined", "--no-rosegment", "--fatal-warnings", "-Bstatic"

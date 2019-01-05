@@ -1,7 +1,10 @@
 use crate::vmem::pagelist::{PhysAddr, PagePool, PagePoolAllocationError, PagePoolReleaseError};
-use crate::vmem::pagelist::{PagePoolAppendError};
+use crate::vmem::pagelist::PagePoolAppendError;
 use core::ptr::NonNull;
+use core::option::NoneError;
 use core::sync::atomic::{AtomicBool, AtomicU16, Ordering};
+use core::convert::TryFrom;
+use crate::vmem::PAGE_SIZE;
 
 const PAGES_PER_BLOCK: usize = 4076;
 
@@ -17,9 +20,12 @@ pub struct PageMap {
 panic_on_drop!(PageMap);
 
 impl PageMap {
-  // Allocates a PageMap on the stack, useful for when no memory is available yet
-  pub fn new_no_alloc(start: PhysAddr, size: u16) -> PageMap {
+  // Allocates a PageMap without relying on the alloc:: crate yet, useful
+  // when initializing the pagemapper
+  // This consumes atleast 1 page of memory
+  pub fn new_no_alloc(start: PhysAddr, size: u16) -> Result<*mut PageMap, PagePoolAllocationError> {
     assert!(size as usize <= PAGES_PER_BLOCK, "must not specify more than PAGES_PER_BLOCK for on-stack pagemap");
+    trace!("allocating pagemap on stack");
     let mut page_map = PageMap {
       start: start,
       size: size,
@@ -29,6 +35,41 @@ impl PageMap {
     };
     for x in 0..PAGES_PER_BLOCK {
       page_map.used[x] = AtomicBool::new(false);
+    }
+    trace!("allocating memory from pagemap on stack");
+    let mut pmw: PageMapWrapper = PageMapWrapper::from(&mut page_map);
+    let self_alloc = pmw.allocate()?;
+    let self_alloc = self_alloc.as_ptr() as *mut PageMap;
+    drop(pmw);
+    trace!("lift pagemap into memory {:#018x}", self_alloc as u64);
+    unsafe { page_map.move_into(self_alloc) };
+    Ok(self_alloc)
+  }
+  /// copies the pagemap into a memory location and forgets about the result
+  unsafe fn move_into(self, pm: *mut PageMap) {
+    unsafe {
+      (*pm).start = self.start;
+      (*pm).size = self.size;
+      (*pm).next = self.next;
+      (*pm).free_pages = AtomicU16::new(self.free_pages.load(Ordering::SeqCst));
+      (*pm).used = unsafe{ core::mem::uninitialized()};
+      for x in 0..PAGES_PER_BLOCK {
+        (*pm).used[x] = AtomicBool::new(self.used[x].load(Ordering::SeqCst));
+      }
+    }
+    core::mem::forget(self);
+  }
+  #[deprecated]
+  fn clone(&self) -> PageMap {
+    let mut page_map = PageMap {
+      start: self.start,
+      size: self.size,
+      next: self.next.clone(),
+      free_pages: AtomicU16::new(self.free_pages.load(Ordering::SeqCst)),
+      used: unsafe{core::mem::uninitialized()},
+    };
+    for x in 0..PAGES_PER_BLOCK {
+      page_map.used[x] = AtomicBool::new(self.used[x].load(Ordering::SeqCst));
     }
     page_map
   }
@@ -77,6 +118,20 @@ impl core::fmt::Debug for PageMapWrapper {
   }
 }
 
+impl From<&mut PageMap> for PageMapWrapper {
+  fn from(pm: &mut PageMap) -> PageMapWrapper {
+    PageMapWrapper(NonNull::from(pm))
+  }
+}
+
+impl TryFrom<*mut PageMap> for PageMapWrapper {
+  type Error = NoneError;
+
+  fn try_from(pm: *mut PageMap) -> Result<PageMapWrapper, NoneError> {
+    Ok(PageMapWrapper(NonNull::new(pm)?))
+  }
+}
+
 impl core::fmt::Display for PageMapWrapper {
   fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
     write!(f, "{:?}", self)
@@ -107,13 +162,17 @@ impl PagePool for PageMapWrapper {
   }
 
   fn allocate(&mut self) -> Result<PhysAddr, PagePoolAllocationError> {
+    trace!("allocating page into memory");
     for x in 0..PAGES_PER_BLOCK {
       let prev = self.used[x].compare_and_swap(false, true, Ordering::SeqCst);
       if !prev {
+        let addr = self.start + (x * PAGE_SIZE);
+        trace!("got page {}", addr);
         self.free_pages.fetch_sub(1, Ordering::SeqCst);
-        return Ok(self.start + (x * PAGES_PER_BLOCK));
+        return Ok(addr);
       }
     }
+    trace!("no page found, trying next block");
     match self.next {
       Some(mut next) => next.allocate(),
       None => Err(PagePoolAllocationError::NoPageFree),
@@ -147,7 +206,7 @@ impl PagePool for PageMapWrapper {
 
         // Allocate the pagemap in memory
         let layout = Layout::new::<PageMap>();
-        assert!(layout.align() == crate::vmem::PAGE_SIZE, "pages must be aligned to pagesize");
+        assert!(layout.align() == PAGE_SIZE, "pages must be aligned to pagesize");
         let ptr: *mut PageMap = unsafe{Global{}.alloc_zeroed(layout)?}.cast().as_ptr();
 
         // Calculate maximum of pages we can put into the new map
@@ -164,7 +223,7 @@ impl PagePool for PageMapWrapper {
         // Update linked list
         self.next = Some(pm);
         if sz > sza {
-          pm.add_memory(pa + sza, sz - sza)
+          Ok(pm.add_memory(pa + sza, sz - sza)?)
         } else {
           Ok(())
         }

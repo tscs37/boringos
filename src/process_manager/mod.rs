@@ -100,6 +100,7 @@ impl Scheduler {
   pub fn register_scheduler(&mut self, th: &TaskHandle) {
     self.scheduler_thandle = *th;
   }
+  #[deprecated]
   pub fn new_kproc<S>(&mut self, name: S, f: *const u8) -> Result<TaskHandle, ()>
   where
     S: Into<String>,

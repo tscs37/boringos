@@ -8,6 +8,8 @@ pub use self::arch::*;
 #[cfg(target_os = "boringos")]
 pub mod arch {
     pub fn register(t: *mut u8, dtor: unsafe extern fn(*mut u8)) {
-        //panic!()
+      import_symbol!(bos_log_trace, fn(&str));
+      bos_log_trace("setting thread destructor");
+        panic!()
     }
 }

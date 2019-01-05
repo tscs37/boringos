@@ -3,11 +3,15 @@ pub mod pagetable;
 pub mod mapper;
 
 use slabmalloc::ObjectPage;
-use crate::vmem::pagelist::PageListLink;
+use core::convert::TryFrom;
+use core::convert::TryInto;
+use core::option::NoneError;
+pub use crate::vmem::pagelist::PhysAddr;
+pub use crate::vmem::pagetable::PAGE_ADDR_FILTER;
 
 pub const PAGE_SIZE: usize = 4096;
 
-const BOOT_MEMORY_PAGES: usize = 16;
+const BOOT_MEMORY_PAGES: u16 = 16;
 
 pub const PAGE_TABLE_LO: usize = 0xffff_ff80_0000_0000;
 pub const KSTACK_GUARD: usize  = 0xffff_ff79_ffff_0000;
@@ -17,9 +21,10 @@ pub const GUARD_PAGE: usize    = 0xffff_ff77_ffff_0000;
 pub const STACK_START: usize   = 0xffff_ff77_fffe_0000;
 pub const STACK_END: usize     = 0xffff_ff00_0001_0000;
 pub const DATA_END: usize      = 0x0000_8fff_fff0_0000;
-pub const DATA_START: usize    = 0x0000_0200_0000_0000;
-pub const BSS_END: usize       = 0x0000_01ff_ffff_0000;
-pub const BSS_START: usize     = 0x0000_01f0_0000_0000;
+//pub const DATA_START: usize    = 0x0000_0200_0000_0000;
+//pub const BSS_END: usize       = 0x0000_01ff_ffff_0000;
+//pub const BSS_START: usize     = 0x0000_01f0_0000_0000;
+pub const DATA_START: usize    = 0x0000_01f0_0000_0000;
 pub const CODE_END: usize      = 0x0000_01ef_ffff_0000;
 pub const CODE_START: usize    = 0x0000_0000_0101_0000;
 pub const TEMP_MAP: usize      = 0x0000_0000_0081_0000;
@@ -27,8 +32,6 @@ pub const KERNEL_END: usize    = 0x0000_0000_0080_0000;
 pub const KERNEL_START: usize  = 0x0000_0000_0000_0000;
 pub const UGUARD_PAGE: usize   = 0xffff_ff00_0000_0000;
 
-pub use crate::vmem::pagelist::PhysAddr;
-pub use crate::vmem::pagetable::PAGE_ADDR_FILTER;
 
 #[repr(align(4096))]
 #[derive(Copy, Clone)]
@@ -45,69 +48,68 @@ impl StaticPage {
 }
 
 use self::pagelist::PagePool;
+use self::pagelist::pagelist_ng::{PageMap, PageMapWrapper};
+use self::pagelist::{PagePoolReleaseError, PagePoolAllocationError, PagePoolAppendError};
 
 #[repr(C)]
 #[repr(align(4096))]
 pub struct PageManager {
-  pagepool: PagePool,
-  //pub first_page_mem: StaticPage,
-  //pub first_range_mem: StaticPage,
-  //pub boot_pages: [StaticPage; BOOT_MEMORY_PAGES],
-  //pub use_boot_memory: bool,
-  // list of 4k pages
-  //pub pages: Option<Arc<Uns
-  //pub pages: PageListLink,
+  pagepool: Option<PageMapWrapper>,
 }
 
 // Memory allocated for bootstrapping
-static mut boot_pages: [StaticPage; BOOT_MEMORY_PAGES] = 
-  [crate::vmem::StaticPage::new(); BOOT_MEMORY_PAGES];
+static mut BOOT_PAGES: [StaticPage; BOOT_MEMORY_PAGES as usize] = 
+  [crate::vmem::StaticPage::new(); BOOT_MEMORY_PAGES as usize];
 
+#[derive(Debug)]
+pub enum InitError {
+  NoneError(NoneError),
+  AllocError(PagePoolAllocationError),
+}
+
+impl From<PagePoolAllocationError> for InitError {
+  fn from(p: PagePoolAllocationError) -> InitError { InitError::AllocError(p) }
+}
+
+impl From<NoneError> for InitError {
+  fn from(p: NoneError) -> InitError { InitError::NoneError(p) }
+}
+
+impl From<()> for InitError {
+  fn from(p: ()) -> InitError { InitError::NoneError(NoneError) }
+}
 
 impl<'a> PageManager {
-  pub const fn new() -> PageManager {
-    PageManager {
-      first_page_mem: crate::vmem::StaticPage::new(),
-      first_range_mem: crate::vmem::StaticPage::new(),
-      boot_pages: [crate::vmem::StaticPage::new(); BOOT_MEMORY_PAGES],
-      use_boot_memory: true,
-      pages: crate::vmem::pagelist::PageListLink::None,
+  pub const fn new() -> PageManager { PageManager { pagepool: None, } }
+
+  pub fn init(&mut self) -> Result<(), InitError> {
+    trace!("allocating pagepool");
+    {
+      self.pagepool = Some(PageMap::new_no_alloc(
+        PhysAddr::try_from(self.get_boot_base())?, BOOT_MEMORY_PAGES as u16
+      )?.try_into()?);
     }
+    trace!("pagepool allocated");
+    Ok(())
   }
-  pub unsafe fn init_page_store(&mut self) {
-    trace!("Initializing Page Store...");
-    match self.pages {
-      PageListLink::None => {
-        self.pages = PageListLink::PageListEntry(
-          pagelist::PageList::new(self.first_page_mem.to_physaddr()));
-        use crate::vmem::pagelist::PageRange;
-        let mut pr = PageListLink::PageRangeEntry(
-          PageRange::new(self.first_range_mem.to_physaddr(),
-            self.get_boot_base(),
-            self.boot_pages.len()
-        ));
-        self.pages.set_next(pr);
-        pr.set_prev(self.pages);
-      }
-      _ => panic!("attempted to double init page store"),
+  fn pagepool(&self) -> &PagePool {
+    self.pagepool.as_ref().unwrap()
+  }
+  fn pagepool_mut(&mut self) -> &mut PagePool {
+    self.pagepool.as_mut().unwrap()
+  }
+  fn get_boot_base(&self) -> PhysAddr {
+    unsafe{
+      PhysAddr::new(
+        (&mut BOOT_PAGES[0].0[0] as *mut u8) as u64).
+        expect("must have boot base")
     }
-    trace!("Page Store initialized with free memory: {} KiB", self.free_memory() / 1024);
-  }
-  fn get_boot_base(&mut self) -> PhysAddr {
-    PhysAddr::new(
-      (&mut self.boot_pages[0].0[0] as *mut u8) as u64).
-      expect("must have boot base")
   }
 
-  pub unsafe fn add_memory(&mut self, start: PhysAddr, num_pages: usize) {
-    match self.pages {
-      PageListLink::PageListEntry(_) => {
-        self.pages.append_range(start, num_pages);
-      }
-      _ => { panic!("attempted to add memory but couldn't get pages")}
-    }
+  pub unsafe fn add_memory(&mut self, start: PhysAddr, num_pages: usize) -> Result<(), PagePoolAppendError> {
+    self.pagepool_mut().add_memory(start, num_pages)?;
     {
-      let pages = self.pages.free_pages();
+      let pages = self.free_memory();
       let mem = pages * 4096;
       trace!("Free memory now {} KiB, {} MiB, {} Pages",
         mem / 1024,
@@ -115,17 +117,10 @@ impl<'a> PageManager {
         pages
       )
     }
-  }
-  pub fn seal_boot_memory(&mut self) {
-    self.use_boot_memory = false
+    Ok(())
   }
   pub fn free_memory(&self) -> usize {
-    match self.pages {
-      PageListLink::PageListEntry(_) => {
-        return self.pages.free_pages() * 4096;
-      }
-      _ => { panic!("attempted to count free memory but couldn't get pages")}
-    }
+    self.pagepool().count_free()
   }
   fn from_objpage(page: &mut ObjectPage<'a>) -> *mut u8 {
     ((page as *mut ObjectPage) as usize) as *mut u8
@@ -133,38 +128,35 @@ impl<'a> PageManager {
   fn to_objpage(ptr: *mut u8) -> &'a mut ObjectPage<'a> {
     unsafe { &mut *((ptr as usize) as *mut ObjectPage) }
   }
-  pub unsafe fn alloc_page(&mut self) -> Option<PhysAddr> {
-    self.pages.grab_free()
+  pub unsafe fn alloc_page(&mut self) -> Result<PhysAddr, PagePoolAllocationError> {
+    self.pagepool_mut().allocate()
   }
-  pub unsafe fn free_page(&mut self, pa: PhysAddr) {
-    self.pages.release(pa)
+  pub unsafe fn free_page(&mut self, pa: PhysAddr) -> Result<(), PagePoolReleaseError> {
+    self.pagepool_mut().release(pa)
   }
 }
 
 impl<'a> ::slabmalloc::PageProvider<'a> for PageManager {
   fn allocate_page(&mut self) -> Option<&'a mut ObjectPage<'a>> {
-    //debug!("Allocating Page...");
-    if let Some(page) = self.pages.grab_free() {
+    trace!("Allocating Page...");
+    if let Ok(page) = self.pagepool_mut().allocate() {
       return Some(PageManager::to_objpage(page.as_u64() as *mut u8));
     }
     None
   }
   fn release_page(&mut self, page: &mut ObjectPage<'a>) {
-    //debug!("Releasing Page {:?}", page);
+    trace!("Releasing Page {:?}", page);
+    let addr = PageManager::from_objpage(page);
+    let addr = addr.try_into().expect("release page must be valid address");
     {
-      //debug!("Clearing page data...");
+      //TODO: make sure this is safe, page may be unmapped!
+      trace!("Clearing page data...");
       let page_raw = (page as *mut _) as *mut [u8; PAGE_SIZE];
       for x in 0..PAGE_SIZE-1 {
         unsafe { (*page_raw)[x] = 0x00; }
       }
     }
-    let addr = PageManager::from_objpage(page);
-    match self.pages {
-      PageListLink::PageListEntry(_) => {
-        self.pages.release(unsafe { PhysAddr::new_unchecked(addr as u64) });
-      }
-      _ => { panic!("tried to dealloc non-boot page without page struct") }
-    }
+    self.pagepool_mut().release(addr);
   }
 }
 

@@ -3,6 +3,8 @@
 /// Voluntarily give a time slice to the scheduler.
 #[cfg(target_os = "boringos")]
 pub fn sched_yield() -> usize {
+  import_symbol!(bos_log_trace, fn(&str));
+  bos_log_trace("yielding to processor");
   import_symbol!(bos_yield, fn(u64));
   bos_yield(0);
   0
@@ -17,12 +19,21 @@ pub fn sched_yield() -> usize {
 /// This is the `brk` **syscall**, not the library function.
 #[cfg(target_os = "boringos")]
 pub unsafe fn brk(ptr: *const u8) -> *const u8 {
+  import_symbol!(bos_log_trace_fmt, fn(core::fmt::Arguments));
+  import_symbol!(bos_log_trace, fn(&str));
+  bos_log_trace_fmt(format_args!("changing brk value to {:#018x}", ptr as u64));
   import_symbol!(bos_get_page_count_data, fn() -> u64);
   import_symbol!(bos_raise_page_limit, fn(u16) -> u64);
   let tar_datasize = (ptr as u64 / 4096) + 1;
   let cur_datasize = bos_get_page_count_data();
+  if tar_datasize == 1 {
+    bos_log_trace("asked for current data pointer, returning default");
+    return 0x0000_01f0_0000_0000 as *const u8;
+  }
+  bos_log_trace_fmt(format_args!("tar_datasize: {}", tar_datasize));
+  bos_log_trace_fmt(format_args!("cur_datasize: {}", cur_datasize));
   let inc_pages = tar_datasize - cur_datasize;
   let new_datasize = bos_raise_page_limit(inc_pages as u16);
   let new_pages = new_datasize - cur_datasize;
-  (ptr as u64 + (new_pages * 4096)) as *const u8
+  (ptr as u64 + (new_pages * 4096) + 0x0000_01f0_0000_0000) as *const u8
 }

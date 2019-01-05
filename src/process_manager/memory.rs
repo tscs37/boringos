@@ -95,7 +95,6 @@ pub enum Memory {
   NoMemory,
   User(MemoryUserRef),
   Code(MemoryUserRef),
-  Static(MemoryUserRef),
   Stack(MemoryUserRef),
   KernelStack(MemoryKernelRef),
 }
@@ -110,9 +109,6 @@ impl Memory {
   pub fn new_codememory() -> Memory {
     Memory::Code(MemoryUser::new_empty())
   }
-  pub fn new_staticmemory() -> Memory {
-    Memory::Static(MemoryUser::new_empty())
-  }
   pub fn new_stack() -> Memory {
     Memory::Stack(MemoryUser::new_sized(3))
   }
@@ -124,10 +120,6 @@ impl Memory {
       Memory::NoMemory => (),
       Memory::User(s) => (*s).borrow().map(
         PhysAddr::new_usize_or_abort(crate::vmem::DATA_START),
-        MapType::Data,
-      ),
-      Memory::Static(s) => (*s).borrow().map(
-        PhysAddr::new_usize_or_abort(crate::vmem::BSS_START),
         MapType::Data,
       ),
       Memory::Code(s) => (*s).borrow().map(
@@ -152,10 +144,6 @@ impl Memory {
         PhysAddr::new_usize_or_abort(crate::vmem::DATA_START),
         MapType::Data,
       ),
-      Memory::Static(s) => (*s).borrow().map(
-        PhysAddr::new_usize_or_abort(crate::vmem::BSS_START),
-        MapType::Data,
-      ),
       Memory::Code(s) => (*s).borrow().map(
         PhysAddr::new_usize_or_abort(crate::vmem::CODE_START),
         MapType::Data,
@@ -177,10 +165,6 @@ impl Memory {
         PhysAddr::new_usize_or_abort(crate::vmem::DATA_START),
         MapType::Data,
       ),
-      Memory::Static(s) => (*s).borrow().unmap(
-        PhysAddr::new_usize_or_abort(crate::vmem::BSS_START),
-        MapType::Data,
-      ),
       Memory::Code(s) => (*s).borrow().unmap(
         PhysAddr::new_usize_or_abort(crate::vmem::CODE_START),
         MapType::Code,
@@ -200,7 +184,6 @@ impl Memory {
       Memory::NoMemory => 0,
       Memory::User(s) => (*s).borrow_mut().zero_page_offset,
       Memory::Code(s) => (*s).borrow_mut().zero_page_offset,
-      Memory::Static(s) => (*s).borrow_mut().zero_page_offset,
       Memory::Stack(_) => 0, // Stacks don't skip
       Memory::KernelStack(_) => 0,
     }
@@ -219,7 +202,6 @@ impl Memory {
       Memory::NoMemory => (),
       Memory::User(s) => (*s).borrow_mut().zero_page_offset = offset,
       Memory::Code(s) => (*s).borrow_mut().zero_page_offset = offset,
-      Memory::Static(s) => (*s).borrow_mut().zero_page_offset = offset,
       Memory::Stack(_) => panic!("kernel tried to set offset on stack memory"),
       Memory::KernelStack(_) => panic!("kernel tried to set offset on kernel stack memory"),
     }
@@ -229,7 +211,6 @@ impl Memory {
       Memory::NoMemory => 0,
       Memory::User(s) => (*s).borrow().page_count(),
       Memory::Code(s) => (*s).borrow().page_count(),
-      Memory::Static(s) => (*s).borrow().page_count(),
       Memory::Stack(s) => (*s).borrow().page_count(),
       Memory::KernelStack(s) => (*s).borrow().page_count(),
     }

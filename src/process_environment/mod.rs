@@ -96,6 +96,8 @@ pub fn init() {
 pub extern fn symrf(sym_type: u16, sym_name: &str) -> *mut u8 {
   //TODO: switch to kernel stack
   let st = SymbolType::from(sym_type);
+  drop(sym_type);
+  //trace!("looking up symbol {:?}({})", st, sym_name);
   match st {
     Some(st) => {
       match st {
@@ -108,14 +110,20 @@ pub extern fn symrf(sym_type: u16, sym_name: &str) -> *mut u8 {
             "bos_set_sig_handler" => kcalls::bos_set_sig_handler as *mut u8,
             "bos_sig_handle" => kcalls::bos_sig_handle as *mut u8,
             "bos_log_trace" => kcalls::bos_log_trace as *mut u8,
+            "bos_log_trace_fmt" => kcalls::bos_log_trace_fmt as *mut u8,
             "bos_log_debug" => kcalls::bos_log_debug as *mut u8,
+            "bos_log_debug_fmt" => kcalls::bos_log_debug_fmt as *mut u8,
             "bos_log_info" => kcalls::bos_log_info as *mut u8,
+            "bos_log_info_fmt" => kcalls::bos_log_info_fmt as *mut u8,
             "bos_log_warn" => kcalls::bos_log_warn as *mut u8,
+            "bos_log_warn_fmt" => kcalls::bos_log_warn_fmt as *mut u8,
             "bos_log_error" => kcalls::bos_log_error as *mut u8,
+            "bos_log_error_fmt" => kcalls::bos_log_error_fmt as *mut u8,
             "bos_raise_page_limit" => kcalls::bos_raise_page_limit as *mut u8,
             "bos_get_page_limit" => kcalls::bos_get_page_limit as *mut u8,
             "bos_get_page_count_data" => kcalls::bos_get_page_count_data as *mut u8,
             "bos_get_page_count_nondata" => kcalls::bos_get_page_count_nondata as *mut u8,
+            "bos_yield" => kcalls::bos_yield as *mut u8,
             _ => 0 as *mut u8,
           }
         },

@@ -13,7 +13,6 @@ pub struct State {
   stack: Memory,
   memory: Memory,
   code: Memory,
-  bss: Memory,
   rsp: usize,
   rbp: usize,
   page_limit: usize,
@@ -37,6 +36,7 @@ pub enum StateError {
 }
 
 impl State {
+  #[deprecated]
   pub fn new_kernelstate(ptr: PhysAddr) -> State {
     trace!("new state with RIP: {}", ptr);
     let s = State {
@@ -45,7 +45,6 @@ impl State {
       start_rip: ptr,
       stack: super::memory::Memory::new_stack(),
       memory: super::memory::Memory::new_usermemory(),
-      bss: super::memory::Memory::new_staticmemory(),
       code: super::memory::Memory::new_codememory(),
       rsp: crate::vmem::STACK_START,
       rbp: crate::vmem::STACK_START,
@@ -59,7 +58,7 @@ impl State {
   pub fn new_elfstate(elf_ptr: &[u8]) -> Result<State, StateError> {
     use goblin::elf::Elf;
     let code_memory = super::memory::Memory::new_codememory();
-    let bss_memory = super::memory::Memory::new_staticmemory();
+    let data_memory = super::memory::Memory::new_usermemory();
     match Elf::parse(elf_ptr) {
       Ok(binary) => {
         if !binary.is_64
@@ -78,9 +77,9 @@ impl State {
         }
         crate::kinfo_mut().mapping_task_image(Some(true));
         let old_code_memory = crate::kinfo_mut().set_memory_ref(&code_memory);
-        let old_bss_memory = crate::kinfo_mut().set_memory_ref(&bss_memory);
+        let old_data_memory = crate::kinfo_mut().set_memory_ref(&data_memory);
         code_memory.map_rw();
-        bss_memory.map();
+        data_memory.map();
         for ph in binary.program_headers {
           if ph.p_type == goblin::elf::program_header::PT_LOAD {
             let filer = ph.file_range();
@@ -94,20 +93,20 @@ impl State {
               let base = filer.start + (&elf_ptr[0] as *const u8 as usize);
               trace!("base is {:#018x}, checking inmemory base...", base);
               let is_code_section = !ph.is_write() && vmr.start >= crate::vmem::CODE_START && vmr.end <= crate::vmem::CODE_END;
-              let is_bss_section = ph.is_read() && vmr.start >= crate::vmem::BSS_START && vmr.end <= crate::vmem::BSS_END;
-              if !is_code_section && !is_bss_section {
+              let is_data_section = ph.is_read() && vmr.start >= crate::vmem::DATA_START && vmr.end <= crate::vmem::DATA_END;
+              if !is_code_section && !is_data_section {
                 panic!("bad section in ELF load: {:#018x}, RWX ({},{},{})", vmr.start, ph.is_read(), ph.is_write(), ph.is_executable());
               }
-              trace!("PHFlags: R={}, W={}, X={}, {:#018x}, Code={}, BSS={}", ph.is_read(), ph.is_write(), ph.is_executable(), vmr.start, is_code_section, is_bss_section);
+              trace!("PHFlags: R={}, W={}, X={}, {:#018x}, Code={}, Data={}", ph.is_read(), ph.is_write(), ph.is_executable(), vmr.start, is_code_section, is_data_section);
               let cur_real_base = {
                 if is_code_section {
                   crate::kinfo().get_code_memory_ref_size()
                   * crate::vmem::PAGE_SIZE
                   + crate::vmem::CODE_START
-                } else if is_bss_section {
-                  crate::kinfo().get_bss_memory_ref_size()
+                } else if is_data_section {
+                  crate::kinfo().get_data_memory_ref_size()
                   * crate::vmem::PAGE_SIZE
-                  + crate::vmem::BSS_START
+                  + crate::vmem::DATA_START
                 } else {
                   panic!("RWX on Program Header")
                 }
@@ -122,10 +121,10 @@ impl State {
                   trace!("setting code memory offset");
                   code_memory.set_zero_page_offset(size as u16);
                   trace!("code_memory page_count = {}", code_memory.page_count());
-                } else if is_bss_section {
-                  trace!("setting bss memory offset");
-                  bss_memory.set_zero_page_offset(size as u16);
-                  trace!("bss_memory page_count = {}", bss_memory.page_count());
+                } else if is_data_section {
+                  trace!("setting data memory offset");
+                  data_memory.set_zero_page_offset(size as u16);
+                  trace!("data_memory page_count = {}", data_memory.page_count());
                 } else {
                   panic!("offset on non-code memory");
                 }
@@ -151,19 +150,18 @@ impl State {
           }
         }
         code_memory.unmap();
-        bss_memory.unmap();
+        data_memory.unmap();
         crate::kinfo_mut().mapping_task_image(Some(false));
         crate::kinfo_mut().set_memory_ref(&old_code_memory);
-        crate::kinfo_mut().set_memory_ref(&old_bss_memory);
+        crate::kinfo_mut().set_memory_ref(&old_data_memory);
         drop(old_code_memory);
-        drop(old_bss_memory);
+        drop(old_data_memory);
         let s = State {
           active: false,
           mode: CPUMode::Kernel,
           start_rip: PhysAddr::new_or_abort(binary.entry),
           stack: super::memory::Memory::new_stack(),
-          memory: super::memory::Memory::new_usermemory(),
-          bss: bss_memory,
+          memory: data_memory,
           code: code_memory,
           rsp: crate::vmem::STACK_START,
           rbp: crate::vmem::STACK_START,
@@ -185,7 +183,6 @@ impl State {
       start_rip: PhysAddr::new(null_fn as u64).expect("null_fn must resolve"),
       stack: super::memory::Memory::new_nomemory(),
       memory: super::memory::Memory::new_nomemory(),
-      bss: super::memory::Memory::new_nomemory(),
       code: super::memory::Memory::new_nomemory(),
       rsp: crate::vmem::STACK_START,
       rbp: crate::vmem::STACK_START,
@@ -208,8 +205,6 @@ impl State {
     self.memory.map();
     trace!("mapping code memory");
     self.code.map();
-    trace!("mapping bss memory");
-    self.bss.map();
   }
   pub fn unmap(&self) {
     trace!("unmapping stack memory");
@@ -218,8 +213,6 @@ impl State {
     self.memory.unmap();
     trace!("unmapping code memory");
     self.code.unmap();
-    trace!("unmapping bss memory");
-    self.bss.unmap();
   }
   pub fn rip(&self) -> u64 {
     self.start_rip.as_u64()
@@ -244,10 +237,8 @@ impl State {
     unsafe {
       self.active = false;
       next.active = true;
-      self.stack.unmap();
-      self.memory.unmap();
-      next.stack.map();
-      next.memory.map();
+      self.unmap();
+      next.map();
       debug!("Bye!");
       asm!(
       "
@@ -315,7 +306,6 @@ pub unsafe fn switch_to(next_task: Arc<RefCell<crate::process_manager::Task>>, n
     assert_eq!(set_switching_tasks, false, "enter userspace only outside task switching");
     assert_eq!(current_task_handle.into_c(), 0, "enter userspace from no running tasks");
     kinfo.set_memory_ref(&state.code);
-    kinfo.set_memory_ref(&state.bss);
     kinfo.set_memory_ref(&state.stack);
     kinfo.set_memory_ref(&state.memory);
   }

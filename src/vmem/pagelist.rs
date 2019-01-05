@@ -1,10 +1,12 @@
-mod pagelist_og;
-mod pagelist_ng;
+pub mod pagelist_og;
+pub mod pagelist_ng;
 
-pub use crate::vmem::pagelist::pagelist_og::*;
+//pub use crate::vmem::pagelist::pagelist_og::*;
+pub use crate::vmem::pagelist::pagelist_ng::*;
 
 use core::ptr::NonNull;
 use core::cmp::Ordering;
+use core::alloc::AllocErr;
 
 // we ignore address 0
 #[derive(Clone,Copy)]
@@ -14,11 +16,13 @@ pub type RelativeFrame = usize;
 
 assert_eq_size!(check_phys_addr_size; PhysAddr,    u64);
 
+#[derive(Debug, Clone)]
 pub enum PagePoolAllocationError {
   /// No free page found
   NoPageFree,
 }
 
+#[derive(Debug, Clone)]
 pub enum PagePoolReleaseError {
   /// Page has been released already (double-free)
   PageAlreadyUnused,
@@ -26,21 +30,22 @@ pub enum PagePoolReleaseError {
   PageUntracked,
 }
 
+#[derive(Debug, Clone)]
 pub enum PagePoolAppendError {
   /// The supplied amount of pages for bootstrapping was not enough
   NotEnoughMemory,
   /// Returned when a None? is run
-  NoneError(core::option::NoneError),
+  NoneError(NoneError),
   /// Returned when the append operation could not allocate
-  AllocError(core::alloc::AllocErr),
+  AllocError(AllocErr),
 }
 
-impl From<core::option::NoneError> for PagePoolAppendError {
-  fn from(e: core::option::NoneError) -> Self { PagePoolAppendError::NoneError(e) }
+impl From<NoneError> for PagePoolAppendError {
+  fn from(e: NoneError) -> Self { PagePoolAppendError::NoneError(e) }
 }
 
-impl From<core::alloc::AllocErr> for PagePoolAppendError {
-  fn from(e: core::alloc::AllocErr) -> Self { PagePoolAppendError::AllocError(e) }
+impl From<AllocErr> for PagePoolAppendError {
+  fn from(e: AllocErr) -> Self { PagePoolAppendError::AllocError(e) }
 }
 
 
@@ -53,7 +58,7 @@ impl From<core::alloc::AllocErr> for PagePoolAppendError {
 /// 
 /// Care must be taken when adding memory; this operation is not atomic and the page pool
 /// does not guarantee it will work while the memory is being added.
-pub trait PagePool: Sized {
+pub trait PagePool {
 
   /// Returns true if there are free memory pages.
   /// This value is non-authorative; a call to allocate() can still fail.
@@ -97,6 +102,23 @@ impl ::core::ops::Add<usize> for PhysAddr {
   fn add(self, rhs: usize) -> PhysAddr {
     let lhs = self.as_usize();
     PhysAddr::new_usize_or_abort(lhs.saturating_add(rhs))
+  }
+}
+
+use core::convert::TryFrom;
+use core::option::NoneError;
+
+impl TryFrom<*mut u8> for PhysAddr {
+  type Error = NoneError;
+
+  fn try_from(f: *mut u8) -> Result<PhysAddr, NoneError> {
+    Ok(PhysAddr::new(f as u64)?)
+  }
+}
+
+impl<W> Into<NonNull<W>> for PhysAddr {
+  fn into(self) -> NonNull<W> {
+    self.0.cast()
   }
 }
 

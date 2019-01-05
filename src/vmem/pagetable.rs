@@ -4,6 +4,7 @@ use core::ptr::NonNull;
 use crate::vmem::PageManager;
 use crate::vmem::PhysAddr;
 use crate::vmem::PAGE_SIZE;
+use crate::vmem::pagelist::PagePoolReleaseError;
 
 const ENTRY_COUNT: usize = 512;
 const LO_ADDR_SPACE: usize = 0x0000_8000_0000_0000;
@@ -47,6 +48,16 @@ pub struct Page {
 }
 
 pub struct Entry(u64);
+
+pub enum UnmapError {
+  ReleaseError(PagePoolReleaseError),
+}
+
+impl From<PagePoolReleaseError> for UnmapError {
+  fn from(l: PagePoolReleaseError) -> UnmapError {
+    UnmapError::ReleaseError(l)
+  }
+}
 
 impl Page {
   pub fn start_address(&self) -> usize {
@@ -178,6 +189,7 @@ impl ActivePageTable {
     let p2 = p3.next_table_create(page.p3_index(), pm);
     let p1 = p2.next_table_create(page.p2_index(), pm);
     assert!(p1[page.p1_index()].is_unused());
+    trace!("setting flags for map_to");
     p1[page.p1_index()].set_addr(target, flags | EntryFlags::PRESENT);
   }
   pub fn map(&mut self, page: Page, flags: EntryFlags, pm: &mut PageManager) -> PhysAddr {
@@ -224,10 +236,10 @@ impl ActivePageTable {
   pub fn unmap_no_free(&mut self, page: Page, pm: &mut PageManager) {
     self.unmap_internal(page, pm);
   }
-  pub fn unmap(&mut self, page: Page, pm: &mut PageManager) {
+  pub fn unmap(&mut self, page: Page, pm: &mut PageManager) -> Result<(), UnmapError> {
     let frame = self.unmap_internal(page, pm);
     self.zero_frame(frame, pm);
-    unsafe { pm.free_page(frame) }
+    Ok(unsafe { pm.free_page(frame)? })
   }
 }
 impl Entry {
@@ -252,7 +264,7 @@ impl Entry {
     }
   }
   pub fn set_addr(&mut self, pa: PhysAddr, flags: EntryFlags) {
-    assert!(pa.as_u64() & !PAGE_ADDR_FILTER == 0);
+    assert!(pa.as_u64() & !PAGE_ADDR_FILTER == 0, "PA not valid: {:#018x} & {:#018x}", pa.as_u64(), PAGE_ADDR_FILTER);
     self.0 = pa.as_u64() | flags.bits();
   }
 }
@@ -326,6 +338,7 @@ where
   ) -> &mut Table<L::NextLevel> {
     if self.next_table(index).is_none() {
       let frame = unsafe { pm.alloc_page() }.expect("no free memory available");
+      trace!("setting entry for new page table");
       self.entries[index].set_addr(frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
       self.next_table_mut(index).expect("need next table").zero();
     }

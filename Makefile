@@ -5,7 +5,8 @@ BIN_TARGET = x86_64-boringosbase
 CRATE = boringos
 QEMU_MEMORY = 512
 QEMU_PLATFORM = system-x86_64
-BOOTIMG_FILE = target/$(KERNEL_TARGET)/release/bootimage-$(CRATE).bin
+KERNEL_BUILD_MODE = debug
+BOOTIMG_FILE = target/$(KERNEL_TARGET)/$(KERNEL_BUILD_MODE)/bootimage-$(CRATE).bin
 BIN_FILE = target/$(KERNEL_TARGET)/debug/$(CRATE)
 QEMU_OPTIONS = -net none -m $(QEMU_MEMORY) \
 	-vga cirrus -cpu Broadwell \
@@ -45,7 +46,11 @@ clean_pid0:
 
 bootimage: initramdata/pid0 initramdata/initramfs.bin
 	@echo "Building Kernel image"
-	@bootimage build --release --target $(KERNEL_TARGET).json
+ifeq ($(KERNEL_BUILD_MODE),debug)
+	@bootimage build --target $(KERNEL_TARGET).json
+else
+	@bootimage build --$(KERNEL_BUILD_MODE) --target $(KERNEL_TARGET).json
+endif
 
 initramdata/pid0: ln_targets pid0_build
 	@cp pid0/target/$(BIN_TARGET)/debug/pid0 initramdata/pid0
