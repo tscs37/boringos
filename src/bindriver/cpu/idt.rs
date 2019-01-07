@@ -1,6 +1,7 @@
 use crate::bindriver::cpu::pic::PIC_1_OFFSET;
 use x86_64::structures::idt::*;
 pub const TIMER_INTERRUPT_ID: u8 = PIC_1_OFFSET;
+use crate::vmem::pagelist::PhysAddr;
 
 fn crack_locks() {
     unsafe { crate::bindriver::serial::SERIAL1.force_unlock() }
@@ -133,177 +134,21 @@ extern "x86-interrupt" fn page_fault(
     };
     debug!("cr2 register says it was {:#018x}", addr);
 
-    let caused_by_prot_violation = error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION);
-    let caused_by_write = error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE);
-    let caused_by_usermode = error_code.contains(PageFaultErrorCode::USER_MODE);
-    let caused_by_instr_fetch = error_code.contains(PageFaultErrorCode::INSTRUCTION_FETCH);
-    let caused_by_malformed_table = false && error_code.contains(PageFaultErrorCode::MALFORMED_TABLE);
-
-    use crate::vmem::pagetable::Page;
-    use crate::vmem::{mapper::map_new, mapper::MapType, PhysAddr, PAGE_SIZE};
-    let page = Page::containing_address(addr);
-    let paddr = unsafe { PhysAddr::new_unchecked(page.start_address() as u64) };
-    let is_kstack = page.start_address() >= crate::vmem::KSTACK_END
-        && page.start_address() <= crate::vmem::KSTACK_START + PAGE_SIZE;
-    let is_ustack = page.start_address() >= crate::vmem::STACK_END
-        && page.start_address() <= crate::vmem::STACK_START + PAGE_SIZE;
-    let is_datapage = page.start_address() >= crate::vmem::DATA_START
-        && page.start_address() <= crate::vmem::DATA_END;
-    let is_codepage = page.start_address() >= crate::vmem::CODE_START
-        && page.start_address() <= crate::vmem::CODE_END;
-    if page.start_address() == 0xfffffffffffff000 || page.start_address() == 0 {
+    if addr >= crate::vmem::PAGE_TABLE_LO || addr <= crate::vmem::KERNEL_START {
         panic!(
             "critical page fault in page table area or zero memory: {:#018x}",
-            page.start_address()
+            addr
         );
     }
-    crate::vmem::pagetable::ActivePageTable::dump(&page);
-    if caused_by_malformed_table {
-        error!("page table malformed at {:#018x}", addr);
-        panic!()
+    let paddr = PhysAddr::new_usize(addr);
+    match paddr {
+        Some(addr) => match crate::vmem::faulth::handle(addr, error_code) {
+            Ok(res) => debug!("Handler returned Ok: {:?}", res),
+            Err(res) => panic!("Handler returned Error: {:?}", res)
+        },
+        None => panic!("PageFault on invalid address {:#018x}", addr),
     }
-    if page.start_address() > crate::vmem::PAGE_TABLE_LO {
-        error!("page fault should not occur in page table area");
-        panic!();
-    }
-    if !caused_by_prot_violation {
-        if is_kstack {
-            if caused_by_instr_fetch {
-                panic!("kernel attempted to run instruction from stack");
-            }
-            debug!("mapping kstack page to {:#018x}", page.start_address());
-            map_new(paddr, MapType::Stack);
-            //TODO: adjust kernel stack size
-            debug!("mapped, returning...");
-            return;
-        } else if is_ustack {
-            if caused_by_instr_fetch {
-                //TODO: kill task instead
-                panic!("task attempted to run instruction from stack")
-            }
-            trace!("checking if the task touched stack correctly");
-            let stack_size_org = crate::kinfo().get_stack_memory_ref_size() + 1 - 2;
-            let stack_size_org = stack_size_org + 1; // Adjust for 0-base
-            let stack_size = stack_size_org - 2; // Allow touching up to 2 pages early
-            let expected_paddr = PhysAddr::new_usize_or_abort(
-                crate::vmem::STACK_START
-                    - (PAGE_SIZE
-                        * (stack_size)),
-            );
-            let laststack_paddr = PhysAddr::new_usize_or_abort(
-                crate::vmem::STACK_START
-                    - (PAGE_SIZE
-                        * (stack_size_org)),
-            );
-            if expected_paddr <= paddr {
-                error!(
-                    "wanted task to touch {} but it touched {}",
-                    laststack_paddr, paddr
-                );
-                panic!("task touched stack memory early, that's nasty");
-            }
-            let diff_pages = PhysAddr::new_usize_or_abort(
-                expected_paddr.as_usize() - paddr.as_usize()).as_usize() / PAGE_SIZE + 1;
-            if diff_pages > 1 {
-                // sometimes rust jumps a page or two ahead, we yell at it but allow it
-                // TODO: include page jumping in task statistics and kill process if it does this too often
-                warn!("task jumped {} pages instead of 1, wanted {} but got {}", 
-                    diff_pages, laststack_paddr, paddr);
-                for x in 0..diff_pages {
-                    let tar_addr = PhysAddr::new_usize_or_abort(
-                        laststack_paddr.as_usize() + x * PAGE_SIZE);
-                    trace!("mapping user stack page to {:#018x}", tar_addr.as_u64());
-                    let new_page = map_new(tar_addr, MapType::Stack);
-                    crate::kinfo_mut().add_stack_page(new_page);
-                }
-            } else if diff_pages == 1 {
-                trace!("mapping user stack page to {:#018x}", page.start_address());
-                let new_page = map_new(paddr, MapType::Stack);
-                crate::kinfo_mut().add_stack_page(new_page);
-            } else {
-                panic!("page fault on supposedly mapped stack");
-            }
-            return;
-        } else if page.start_address() == crate::vmem::KSTACK_GUARD {
-            panic!("stack in kernel stack guard");
-        } else if is_codepage || is_datapage {
-            if caused_by_instr_fetch {
-                // Doesn't work?
-                panic!("task could not execute in executable memory");
-            }
-            //TODO: check paging mode for paging new task
-            //TODO: check if zero page touched
-            trace!("page fault in user code or bss memory, checking if kernel is creating new task");
-            if crate::kinfo_mut().mapping_task_image(None) {
-                trace!("checking if the kernel touched memory correctly");
-                let expected_paddr = {
-                    if is_codepage {
-                        PhysAddr::new_usize_or_abort(
-                        crate::vmem::CODE_START
-                            + (PAGE_SIZE
-                                * (crate::kinfo().get_code_memory_ref_size())),
-                        )
-                    } else if is_datapage {
-                        PhysAddr::new_usize_or_abort(
-                        crate::vmem::DATA_START
-                            + (PAGE_SIZE
-                                * (crate::kinfo().get_data_memory_ref_size())),
-                        )
-                    } else {
-                        panic!("Neither BSS or Code page in BSS or Code only path of page fault");
-                    }
-                };
-                if expected_paddr != paddr {
-                    error!(
-                        "wanted kernel to touch {} but it touched {}",
-                        expected_paddr, paddr
-                    );
-                    panic!("kernel touched code memory early, that's nasty");
-                }
-                let new_page = map_new(paddr, MapType::Data);
-                trace!(
-                    "mapped new code or data memory, notifying kernel for page {}<->{}",
-                    new_page, paddr
-                );
-                if is_codepage {
-                    crate::kinfo_mut().add_code_page(new_page);
-                } else if is_datapage {
-                    crate::kinfo_mut().add_data_page(new_page);
-                } else {
-                    panic!("Neither BSS or Code page in BSS or Code only path of page fault");
-                }
-                return;
-            } else {
-                panic!("tried to access bss or code memory outside mapping zone: {}, Data={}, Code={}", paddr, is_datapage, is_codepage);
-            }
-        } else {
-            panic!("cannot map: {:#018x}", page.start_address());
-        }
-    } else {
-        if paddr.as_usize() > crate::vmem::pagetable::LOW_PAGE_TABLE {
-            warn!("page fault in page table area, checking if mapped...");
-            if crate::vmem::mapper::is_mapped(paddr) {
-                panic!("page fault in mapped page table");
-            } else {
-                panic!("page fault in unmapped page table");
-                //map_new(paddr, MapType::Data);
-                //return;
-            }
-        }
-        if is_kstack || is_ustack {
-            error!("protection violation in stack area");
-        }
-        error!(
-            "uncovered pagefault occured: {:#018x} => ({:x}) {:?} \n\n",
-            page.start_address(),
-            error_code,
-            error_code
-        );
-        if is_kstack {
-            panic!("prot violation in kernel");
-        }
-        panic!("pagefault todo:");
-    }
+    
 }
 
 extern "x86-interrupt" fn timer_interrupt(_stack_frame: &mut ExceptionStackFrame) {

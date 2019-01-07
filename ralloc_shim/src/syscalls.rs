@@ -19,21 +19,24 @@ pub fn sched_yield() -> usize {
 /// This is the `brk` **syscall**, not the library function.
 #[cfg(target_os = "boringos")]
 pub unsafe fn brk(ptr: *const u8) -> *const u8 {
-  import_symbol!(bos_log_trace_fmt, fn(core::fmt::Arguments));
-  import_symbol!(bos_log_trace, fn(&str));
-  bos_log_trace_fmt(format_args!("changing brk value to {:#018x}", ptr as u64));
+  const OFFSET: u64 = 0x0000_01f0_0000_0000;
   import_symbol!(bos_get_page_count_data, fn() -> u64);
   import_symbol!(bos_raise_page_limit, fn(u16) -> u64);
-  let tar_datasize = (ptr as u64 / 4096) + 1;
-  let cur_datasize = bos_get_page_count_data();
-  if tar_datasize == 1 {
-    bos_log_trace("asked for current data pointer, returning default");
-    return 0x0000_01f0_0000_0000 as *const u8;
+  if ptr as u64 == 0 {
+    return (bos_get_page_count_data() * 4096 + OFFSET) as *const u8;
   }
-  bos_log_trace_fmt(format_args!("tar_datasize: {}", tar_datasize));
-  bos_log_trace_fmt(format_args!("cur_datasize: {}", cur_datasize));
-  let inc_pages = tar_datasize - cur_datasize;
-  let new_datasize = bos_raise_page_limit(inc_pages as u16);
-  let new_pages = new_datasize - cur_datasize;
-  (ptr as u64 + (new_pages * 4096) + 0x0000_01f0_0000_0000) as *const u8
+  let tar_datasize = ((ptr as u64 - OFFSET) / 4096) + 1;
+  let cur_datasize = bos_get_page_count_data();
+  let new_pages = if (tar_datasize > cur_datasize) {
+    let inc_pages = tar_datasize - cur_datasize;
+    // bos_raise_page_limit returns the total pagelimit, not the number of datapages
+    bos_raise_page_limit(inc_pages as u16);
+    let new_datasize = bos_get_page_count_data();
+    new_datasize - cur_datasize
+  } else {
+    //TODO: free memory if ptr significantly (>2 pages) below current limit
+    0
+  };
+  let ptr = ptr as u64 + (new_pages * 4096);
+  ptr as *const u8
 }

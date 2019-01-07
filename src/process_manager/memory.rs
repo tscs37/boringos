@@ -35,7 +35,7 @@ impl MemoryUserRef {
       pages.push(crate::common::alloc_page().expect("could not spawn page for user memory"));
     } }
     let data = Box::new(Rc::new(RefCell::new(MemoryUser {
-      pages: pages,
+      pages,
       zero_page_offset: 0,
     })));
     let ptr = Box::into_raw(data);
@@ -114,6 +114,10 @@ impl Memory {
   }
   pub fn new_kernelstack() -> Memory {
     Memory::KernelStack(MemoryKernel::new())
+  }
+  pub fn clone_cow(&self) -> Memory {
+    self.clone()
+    //TODO:
   }
   pub fn map(&self) {
     match self {

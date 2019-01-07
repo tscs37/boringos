@@ -20,15 +20,14 @@ pub struct PageMap {
 panic_on_drop!(PageMap);
 
 impl PageMap {
-  // Allocates a PageMap without relying on the alloc:: crate yet, useful
-  // when initializing the pagemapper
-  // This consumes atleast 1 page of memory
+  /// Allocates a PageMap without relying on the alloc:: crate yet, useful
+  /// when initializing the pagemapper, this will consume some memory
   pub fn new_no_alloc(start: PhysAddr, size: u16) -> Result<*mut PageMap, PagePoolAllocationError> {
     assert!(size as usize <= PAGES_PER_BLOCK, "must not specify more than PAGES_PER_BLOCK for on-stack pagemap");
     trace!("allocating pagemap on stack");
     let mut page_map = PageMap {
-      start: start,
-      size: size,
+      start,
+      size,
       next: None,
       free_pages: AtomicU16::new(size),
       used: unsafe{core::mem::uninitialized()},
@@ -47,31 +46,15 @@ impl PageMap {
   }
   /// copies the pagemap into a memory location and forgets about the result
   unsafe fn move_into(self, pm: *mut PageMap) {
-    unsafe {
-      (*pm).start = self.start;
-      (*pm).size = self.size;
-      (*pm).next = self.next;
-      (*pm).free_pages = AtomicU16::new(self.free_pages.load(Ordering::SeqCst));
-      (*pm).used = unsafe{ core::mem::uninitialized()};
-      for x in 0..PAGES_PER_BLOCK {
-        (*pm).used[x] = AtomicBool::new(self.used[x].load(Ordering::SeqCst));
-      }
+    (*pm).start = self.start;
+    (*pm).size = self.size;
+    (*pm).next = self.next;
+    (*pm).free_pages = AtomicU16::new(self.free_pages.load(Ordering::SeqCst));
+    (*pm).used = core::mem::uninitialized();
+    for x in 0..PAGES_PER_BLOCK {
+      (*pm).used[x] = AtomicBool::new(self.used[x].load(Ordering::SeqCst));
     }
     core::mem::forget(self);
-  }
-  #[deprecated]
-  fn clone(&self) -> PageMap {
-    let mut page_map = PageMap {
-      start: self.start,
-      size: self.size,
-      next: self.next.clone(),
-      free_pages: AtomicU16::new(self.free_pages.load(Ordering::SeqCst)),
-      used: unsafe{core::mem::uninitialized()},
-    };
-    for x in 0..PAGES_PER_BLOCK {
-      page_map.used[x] = AtomicBool::new(self.used[x].load(Ordering::SeqCst));
-    }
-    page_map
   }
   // creates a new pagemap at the indicates position
   // and consumes as many pages as possible until either it's capacity
@@ -82,7 +65,7 @@ impl PageMap {
     let actual_size: u16 = core::cmp::min(size, PAGES_PER_BLOCK as u16);
     let rem_size = if actual_size != size { size.saturating_sub(actual_size) } else { 0 };
     unsafe {(*page_map) = PageMap {
-      start: start,
+      start,
       size: actual_size,
       free_pages: AtomicU16::new(size),
       next: None,
@@ -185,7 +168,7 @@ impl PagePool for PageMapWrapper {
     }
     let index = pa - self.start;
     let prev = self.used[index].compare_and_swap(true, false, Ordering::SeqCst);
-    return if prev {
+    if prev {
       self.free_pages.fetch_add(1, Ordering::SeqCst);
       Ok(())
     } else {
@@ -242,6 +225,5 @@ assert_eq_size!(check_page_map_wrapopt; Option<PageMapWrapper>, u64);
 
 #[cfg(test)]
 mod test {
-  use super::PageMap;
-
+//TODO: implement some tests
 }

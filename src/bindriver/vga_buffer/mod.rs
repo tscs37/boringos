@@ -22,7 +22,7 @@ impl Writer {
                 let color_code = self.color_code;
                 self.buffer.chars[row][col].write(buffer::ScreenChar {
                     ascii_character: byte,
-                    color_code: color_code,
+                    color_code,
                 });
                 self.column_position += 1;
             }

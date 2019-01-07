@@ -5,6 +5,7 @@
 
 #[macro_use]
 extern crate symrfp;
+
 extern crate ralloc;
 
 #[global_allocator]
@@ -49,8 +50,8 @@ fn task() {
     sp.write_fmt(format_args!("New pagelimit: {}\n", bos_raise_page_limit(1028)));
     sp.write_fmt(format_args!("New pagelimit: {}\n", bos_raise_page_limit(1028)));
   }
+  import_symbol!(bos_log_debug, fn(&str));
   {
-    import_symbol!(bos_log_debug, fn(&str));
     bos_log_debug("testing memory allocator");
     use alloc::alloc::{alloc, dealloc, Layout};
     unsafe{
@@ -63,18 +64,22 @@ fn task() {
     }
     bos_log_debug("memory allocator ok!");
   }
-  /*let bos_get_initramfs = get_symbol(SymbolType::KernelCall, "bos_get_initramfs") ;
-  let bos_new_task = get_symbol(SymbolType::KernelCall, "bos_new_task");
-  let bos_set_scheduler = get_symbol(SymbolType::KernelCall, "bos_set_scheduler");
-  let bos_add_interpreter = get_symbol(SymbolType::KernelCall, "bos_add_interpreter");
-  let bos_load_taskimage_wasm = get_symbol(SymbolType::KernelCall, "wasm_set_task_image");
-  let bos_yield = get_symbol(SymbolType::KernelCall, "yield");*/
+  import_symbol!(bos_log_debug_fmt, fn(core::fmt::Arguments));
+  import_symbol!(bos_spawn_task, fn() -> u64);
+  let scheduler_th = bos_spawn_task();
+  bos_log_debug_fmt(format_args!("scheduler task handle: {:#018x}", scheduler_th));
+  import_symbol!(bos_yield, fn(u64));
   sp.write_str("loaded smybols, setting up scheduler...\n");
   //TODO: parse initramfs
   //TODO: load scheduler binary
   //TODO: set scheduler
   //TODO: yield
   //TODO: load wasm compiler
+  loop {
+    bos_yield(scheduler_th);
+    bos_log_debug("returned from scheduler, yielding again.");
+    panic!()
+  }
 }
 
 use core::panic::PanicInfo;

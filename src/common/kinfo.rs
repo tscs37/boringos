@@ -51,12 +51,19 @@ impl KernelInfo {
   }
   pub fn get_zero_page_addr(&self) -> PhysAddr {
     let v = self.zero_page_addr.load(Ordering::SeqCst);
-    return if v == 0 {
+    if v == 0 {
       info!("kernel has no zero page, allocating one");
       let page = crate::alloc_page().expect("must have zero page in kernel");
       let v = self.zero_page_addr.compare_and_swap(0, page.as_u64(), Ordering::SeqCst);
-      if v != page.as_u64() {
-        crate::release_page(page);
+      if v != page.as_u64() && v != 0 {
+        use crate::vmem::pagelist::PagePoolReleaseError;
+        match crate::release_page(page) {
+          Ok(_) => {},
+          Err(pre) => match pre {
+            PagePoolReleaseError::PageUntracked => warn!("released untracked page {}", page),
+            _ => panic!("error when releasing page: {:?}", pre)
+          }
+        }
       }
       page
     } else {

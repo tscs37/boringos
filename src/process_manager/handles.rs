@@ -4,7 +4,7 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use core::cell::RefCell;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Handle(u64);
 
 impl Handle {
@@ -20,6 +20,12 @@ impl Handle {
 }
 
 impl ::core::fmt::Display for Handle {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+      f.write_fmt(format_args!("{:x}", self.0))
+  }
+}
+
+impl ::core::fmt::Debug for Handle {
     fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
       f.write_fmt(format_args!("{:x}", self.0))
   }
@@ -46,15 +52,15 @@ impl TaskHandleRegistry {
   pub fn new() -> TaskHandleRegistry {
     TaskHandleRegistry(BTreeMap::new())
   }
-  pub fn insert(&mut self, th: &TaskHandle, t: Task) {
-    self.0.insert(*th, Arc::new(RefCell::new(t)));
+  pub fn insert(&mut self, th: TaskHandle, t: Task) {
+    self.0.insert(th, Arc::new(RefCell::new(t)));
   }
-  pub fn resolve(&self, th: &TaskHandle) -> Option<&Arc<RefCell<Task>>> {
-    self.0.get(th)
+  pub fn resolve(&self, th: TaskHandle) -> Option<&Arc<RefCell<Task>>> {
+    self.0.get(&th)
   }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct TaskHandle(Handle);
 
 impl TaskHandle {
@@ -87,9 +93,21 @@ impl From<u64> for TaskHandle {
   }
 }
 
+impl Into<u64> for TaskHandle {
+  fn into(self) -> u64 {
+    self.into_c()
+  }
+}
+
 impl ::core::fmt::Display for TaskHandle {
   fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-      f.write_fmt(format_args!("{}", self.0))
+      f.write_fmt(format_args!("{:?}", self.0))
+  }
+}
+
+impl ::core::fmt::Debug for TaskHandle {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+      f.write_fmt(format_args!("{:?}", self.0))
   }
 }
 

@@ -38,14 +38,14 @@ impl Userspace {
   }
   pub fn in_scheduler_mut<T>(
     &self,
-    run: impl Fn(RwLockWriteGuard<Scheduler>) -> T,
+    mut run: impl FnMut(RwLockWriteGuard<Scheduler>) -> T,
   ) -> Result<T, ()> {
     match (*self.scheduler).try_write() {
       None => Err(()),
       Some(sched) => Ok(run(sched)),
     }
   }
-  pub fn in_scheduler_mut_spin<T>(&self, run: impl Fn(RwLockWriteGuard<Scheduler>) -> T) -> T {
+  pub fn in_scheduler_mut_spin<T>(&self, mut run: impl FnMut(RwLockWriteGuard<Scheduler>) -> T) -> T {
     run((*self.scheduler).write())
   }
   pub fn enter(&self) {
@@ -54,10 +54,13 @@ impl Userspace {
       .in_scheduler(|sched| {
         (*sched.kernel_stack).read().map();
         let sched_th = (sched).scheduler_thandle;
-        let sched_task = (sched).resolve_th(&sched_th);
+        let sched_task = (sched).resolve_th(sched_th);
         ( sched_task.expect("entering userspace requires scheduler"), sched_th )
       })
       .expect("userspace enter needs lock acquire");
+    self.in_scheduler_mut(|mut scheduler| {
+      scheduler.current_task = sched.1;
+    }).expect("require scheduler to enter userspace");
     unsafe { crate::process_manager::state::switch_to(sched.0, sched.1) }
   }
   pub fn yield_to(&self, th: Option<TaskHandle>) {
@@ -84,54 +87,49 @@ panic_on_drop!(Scheduler);
 impl Scheduler {
   pub fn new() -> Scheduler {
     let nulltask = Task::new_nulltask();
-    let nulltaskh = TaskHandle::zero();
     let s = Scheduler {
       treg: Arc::new(RwLock::new(TaskHandleRegistry::new())),
-      scheduler_thandle: nulltaskh,
-      current_task: nulltaskh,
+      scheduler_thandle: nulltask.me,
+      current_task: nulltask.me,
       kernel_stack: Arc::new(RwLock::new(Memory::new_kernelstack())),
     };
-    s.insert_treg(&TaskHandle::zero(), nulltask);
+    s.insert_treg(nulltask);
     s
   }
   pub fn current_task(&self) -> TaskHandle {
     self.current_task
   }
-  pub fn register_scheduler(&mut self, th: &TaskHandle) {
-    self.scheduler_thandle = *th;
+  pub fn set_current_task(&mut self, th: TaskHandle) {
+    self.current_task = th
   }
-  #[deprecated]
-  pub fn new_kproc<S>(&mut self, name: S, f: *const u8) -> Result<TaskHandle, ()>
-  where
-    S: Into<String>,
-  {
-    let n = name.into();
-    let t = Task::new_ktask_for_fn(f, n.clone());
-    // First Task is task 0 for a KProc
-    let h = Handle::gen();
-    debug!("new task with handle {}", h);
-    let th = TaskHandle::from(h);
-    self.insert_treg(&th, t);
-    info!("registering kernel process '{}' ({})", n, th);
-    Ok(th)
+  pub fn spawn_from_task(&mut self) -> Option<TaskHandle> {
+    let task = self.resolve_th(self.current_task())?;
+    let new_task = (*task).borrow().spawn();
+    let new_task_th = new_task.me;
+    info!("new task spawned from {} to {}", (*task).borrow().me, new_task_th);
+    Some(self.insert_treg(new_task))
+  }
+  pub fn register_scheduler(&mut self, th: TaskHandle) {
+    self.scheduler_thandle = th;
   }
   pub fn new_elfproc<S>(&mut self, name: S, f: &[u8]) -> Result<TaskHandle, ()>
   where
     S: Into<String>,
   {
     let n = name.into();
-    let t = Task::new_task_from_elf(f, n.clone());
-    let h = Handle::gen();
-    debug!("new task with handle {}", h);
-    let th = TaskHandle::from(h);
-    self.insert_treg(&th, t);
+    let th = TaskHandle::gen();
+    debug!("new task with handle {}", th);
+    let t = Task::new_task_from_elf(f, n.clone(), th);
+    self.insert_treg(t);
     info!("registered kernel process '{}' ({})", n, th);
     Ok(th)
   }
-  fn insert_treg(&self, th: &TaskHandle, t: Task) {
-    (*self.treg).write().insert(th, t)
+  fn insert_treg(&self, t: Task) -> TaskHandle{
+    let me = t.me;
+    (*self.treg).write().insert(me, t);
+    me
   }
-  pub fn resolve_th(&self, th: &TaskHandle) -> Option<Arc<RefCell<Task>>> {
+  pub fn resolve_th(&self, th: TaskHandle) -> Option<Arc<RefCell<Task>>> {
     (*self.treg)
       .read()
       .resolve(th)
@@ -140,12 +138,12 @@ impl Scheduler {
   // yield_to will save the current process and task context and then
   // call yield_stage2 with the given process handle
   // this function will be called by the scheduler
-  pub fn yield_to(&mut self, th: Option<TaskHandle>) {
+  pub fn yield_to(&self, cur: TaskHandle, th: Option<TaskHandle>) {
     dump_stack_addr!();
     match th {
       None => {
         let sched = self.scheduler_thandle;
-        self.yield_to(Some(sched));
+        self.yield_to(cur, Some(sched));
         //unsafe { self.yield_stage2_sched_internal(sched) };
       }
       Some(th_in) => {
@@ -157,15 +155,18 @@ impl Scheduler {
         } else {
           th = th_in;
         }
-        assert_ne!(self.current_task, th, "cannot yield to yourself");
+        assert_eq!(th, self.current_task, "caller must update current task");
+        if th == cur {
+          // if the task is already running, do nothing and return
+          return;
+        }
         let current_task: Arc<RefCell<Task>>;
         let next_task: Arc<RefCell<Task>>;
         {
           let treg = (*self.treg).read();
-          current_task = (treg.resolve(&self.current_task).expect("need current task")).clone();
-          next_task = (treg.resolve(&th).expect("need next task")).clone();
+          current_task = (treg.resolve(cur).expect("need current task")).clone();
+          next_task = (treg.resolve(th).expect("need next task")).clone();
         }
-        self.current_task = th;
         use self::task::Status;
         let status;
         {
@@ -177,8 +178,11 @@ impl Scheduler {
         match status {
           Status::New => {
             debug!("Doing switch...");
+            trace!("grabbing current task");
             let mut ct = current_task.borrow_mut();
+            trace!("grabbing next task");
             let mut nt = next_task.borrow_mut();
+            trace!("executing switch");
             ct.switch_to(&mut nt);
           }
           _ => panic!("TODO: implement resuming tasks"),

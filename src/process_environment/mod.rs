@@ -124,6 +124,7 @@ pub extern fn symrf(sym_type: u16, sym_name: &str) -> *mut u8 {
             "bos_get_page_count_data" => kcalls::bos_get_page_count_data as *mut u8,
             "bos_get_page_count_nondata" => kcalls::bos_get_page_count_nondata as *mut u8,
             "bos_yield" => kcalls::bos_yield as *mut u8,
+            "bos_spawn_task" => kcalls::bos_spawn_task as *mut u8,
             _ => 0 as *mut u8,
           }
         },
@@ -131,6 +132,6 @@ pub extern fn symrf(sym_type: u16, sym_name: &str) -> *mut u8 {
         //_ => 0 as *mut u8,
       }
     }
-    None => return 0 as *mut u8,
+    None => 0 as *mut u8,
   }
 }

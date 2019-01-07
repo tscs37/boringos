@@ -1,23 +1,32 @@
 use core::cell::RefCell;
-use crate::process_manager::memory::Memory;
 use crate::vmem::PhysAddr;
 use crate::process_manager::TaskHandle;
+use crate::process_manager::memory::Memory;
 
 const DEFAULT_PAGE_LIMIT: usize = 1024;
 
 #[derive(Debug, Clone)]
 pub struct State {
+  //TODO: make atomic
   active: bool,
   mode: CPUMode,
+  //TODO: rename to rip and make atomic
   start_rip: PhysAddr,
+  //TODO: use locked memory handling
   stack: Memory,
   memory: Memory,
   code: Memory,
+  //TODO: make atomic
   rsp: usize,
+  //TODO: make atomic
   rbp: usize,
+  //TODO: make atomic
   page_limit: usize,
+  //TODO: make atomic
   signalrecv: usize, // Handle for Task Signals
+  //TODO: make atomic
   killh: usize, // Run this handler when we kill the task
+  //TODO: use rw locked task_env
   task_env: Option<Arc<crate::process_environment::TaskEnvironment>>, // If None, the task uses the parent's env, otherwise this one contains overwrites
 }
 
@@ -36,29 +45,10 @@ pub enum StateError {
 }
 
 impl State {
-  #[deprecated]
-  pub fn new_kernelstate(ptr: PhysAddr) -> State {
-    trace!("new state with RIP: {}", ptr);
-    let s = State {
-      active: false,
-      mode: CPUMode::Kernel,
-      start_rip: ptr,
-      stack: super::memory::Memory::new_stack(),
-      memory: super::memory::Memory::new_usermemory(),
-      code: super::memory::Memory::new_codememory(),
-      rsp: crate::vmem::STACK_START,
-      rbp: crate::vmem::STACK_START,
-      signalrecv: 0,
-      killh: 0,
-      task_env: None,
-      page_limit: DEFAULT_PAGE_LIMIT,
-    };
-    s
-  }
   pub fn new_elfstate(elf_ptr: &[u8]) -> Result<State, StateError> {
     use goblin::elf::Elf;
-    let code_memory = super::memory::Memory::new_codememory();
-    let data_memory = super::memory::Memory::new_usermemory();
+    let code_memory = Memory::new_codememory();
+    let data_memory = Memory::new_usermemory();
     match Elf::parse(elf_ptr) {
       Ok(binary) => {
         if !binary.is_64
@@ -147,6 +137,12 @@ impl State {
               return Err(StateError::ELFBadPH);
             }
             debug!("loaded ELF section: {:#018x}", vmr.start);
+          } else if ph.p_type == goblin::elf::program_header::PT_PHDR {
+            debug!("PHDR, ignoring");
+          } else if ph.p_type == goblin::elf::program_header::PT_GNU_STACK {
+            debug!("GNU_STACK, ignoring");
+          } else {
+            panic!("Unknown ELF section: {:?}", ph);
           }
         }
         code_memory.unmap();
@@ -160,7 +156,7 @@ impl State {
           active: false,
           mode: CPUMode::Kernel,
           start_rip: PhysAddr::new_or_abort(binary.entry),
-          stack: super::memory::Memory::new_stack(),
+          stack: Memory::new_stack(),
           memory: data_memory,
           code: code_memory,
           rsp: crate::vmem::STACK_START,
@@ -181,9 +177,9 @@ impl State {
       active: false,
       mode: CPUMode::Kernel,
       start_rip: PhysAddr::new(null_fn as u64).expect("null_fn must resolve"),
-      stack: super::memory::Memory::new_nomemory(),
-      memory: super::memory::Memory::new_nomemory(),
-      code: super::memory::Memory::new_nomemory(),
+      stack: Memory::new_nomemory(),
+      memory: Memory::new_nomemory(),
+      code: Memory::new_nomemory(),
       rsp: crate::vmem::STACK_START,
       rbp: crate::vmem::STACK_START,
       signalrecv: 0,
@@ -195,8 +191,33 @@ impl State {
   pub fn mode(&self) -> CPUMode {
     self.mode.clone()
   }
+  pub fn reset(&mut self) {
+    self.stack = Memory::new_stack();
+    self.memory = Memory::new_usermemory();
+    self.code = Memory::new_codememory();
+  }
+  pub fn set_codeimage(&mut self, code_img: &[u8]) -> usize {
+    //TODO: do offline mapping for task
+    code_img.len()
+  }
   pub fn activate(&mut self) {
     self.active = true;
+  }
+  pub fn clone_state(&self) -> State {
+    State {
+      active: false,
+      mode: self.mode,
+      start_rip: self.start_rip,
+      stack: self.stack.clone_cow(),
+      memory: self.stack.clone_cow(),
+      code: self.stack.clone_cow(),
+      rsp: self.rsp,
+      rbp: self.rbp,
+      page_limit: self.page_limit,
+      signalrecv: self.signalrecv,
+      killh: self.killh,
+      task_env: self.task_env.clone(),
+    }
   }
   pub fn map(&self) {
     trace!("mapping stack memory");
@@ -230,7 +251,6 @@ impl State {
   pub fn page_limit(&self) -> u64 {
     self.page_limit as u64
   }
-  #[cold]
   #[inline(never)]
   pub fn switch_to(&mut self, next: &mut State) {
     debug!("Switching context");

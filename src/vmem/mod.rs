@@ -1,6 +1,7 @@
 pub mod pagelist;
 pub mod pagetable;
 pub mod mapper;
+pub mod faulth;
 
 use slabmalloc::ObjectPage;
 use core::convert::TryFrom;
@@ -29,7 +30,8 @@ pub const CODE_END: usize      = 0x0000_01ef_ffff_0000;
 pub const CODE_START: usize    = 0x0000_0000_0101_0000;
 pub const TEMP_MAP: usize      = 0x0000_0000_0081_0000;
 pub const KERNEL_END: usize    = 0x0000_0000_0080_0000;
-pub const KERNEL_START: usize  = 0x0000_0000_0000_0000;
+pub const KERNEL_START: usize  = 0x0000_0000_0001_0000;
+pub const ZERO_ADDR: usize     = 0x0000_0000_0000_0000;
 pub const UGUARD_PAGE: usize   = 0xffff_ff00_0000_0000;
 
 
@@ -156,7 +158,7 @@ impl<'a> ::slabmalloc::PageProvider<'a> for PageManager {
         unsafe { (*page_raw)[x] = 0x00; }
       }
     }
-    self.pagepool_mut().release(addr);
+    self.pagepool_mut().release(addr).expect("could not release page for allocator");
   }
 }
 

@@ -94,11 +94,13 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
               size / 4096
             );
             usable_memory += size;
-            unsafe {
-              pager().add_memory(
-                crate::vmem::pagelist::PhysAddr::new_unchecked(range.start_addr()),
-                (size / 4096) as usize - 1,
-              );
+            unsafe { match pager().add_memory(
+              crate::vmem::pagelist::PhysAddr::new_unchecked(range.start_addr()),
+                (size / 4096) as usize - 1,) 
+              {
+                Ok(_) => {},
+                Err(pae) => warn!("could not add memory: {:?}", pae),
+              }
             };
           }
           _ => {}
@@ -128,7 +130,7 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
         let pid0h = sched.new_elfproc("pid0", crate::inc::PID0);
         match pid0h {
           Ok(pid0h) => {
-            sched.register_scheduler(&pid0h);
+            sched.register_scheduler(pid0h);
             trace!("Scheduler created with handle {}", pid0h);
           }
           Err(()) => {

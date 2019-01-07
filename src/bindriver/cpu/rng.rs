@@ -4,7 +4,8 @@ use rand::SeedableRng;
 use spin::Mutex;
 
 lazy_static! {
-  static ref rng: Mutex<ChaChaRng> = Mutex::new(ChaChaRng::seed_from_u64(134304831));
+  //TODO: per CPU
+  static ref rng: Mutex<ChaChaRng> = Mutex::new(ChaChaRng::seed_from_u64(134_304_831));
 }
 
 pub fn get_u64() -> u64 {

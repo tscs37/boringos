@@ -9,43 +9,33 @@ pub struct Task {
   pub status: Status,
   pub parent: TaskHandle,
   pub supervisor: TaskHandle,
+  pub me: TaskHandle,
   name: String,
 }
 
 impl Task {
-  pub fn new<S>(s: State, parent: TaskHandle, name: S) -> Task where S: Into<String> {
+  pub fn new<S>(s: State, parent: TaskHandle, name: S, me: TaskHandle) -> Task where S: Into<String> {
     Task {
       state: s,
       status: Status::New,
-      parent: parent,
+      parent,
       supervisor: parent,
+      me,
       name: name.into(),
     }
   }
-  #[deprecated]
-  pub fn new_ktask_for_fn<S>(f: *const u8, name: S) -> Task where S: Into<String> {
-    warn!("new ktask, consider using a non-ktask if possible");
-    let f = crate::vmem::PhysAddr::new(f as u64).expect("kernelstate needs function pointer");
-    debug!("ptr to fn: {}", f);
-    Task {
-      state: State::new_kernelstate(f),
-      status: Status::New,
-      parent: TaskHandle::zero(),
-      supervisor: TaskHandle::zero(),
-      name: name.into(),
-    }
-  }
-  pub fn new_task_from_elf<S>(f: &[u8], name: S) -> Task where S: Into<String> {
+  pub fn new_task_from_elf<S>(f: &[u8], name: S, me: TaskHandle) -> Task where S: Into<String> {
     warn!("new elf task, consider using a non-elf if possible");
     Task {
       state: State::new_elfstate(f).expect("TODO: error handle elf task generation"),
       status: Status::New,
       parent: TaskHandle::zero(),
       supervisor: TaskHandle::zero(),
+      me,
       name: name.into(),
     }
   }
-  pub fn new_task<S>(image: &[u8], name: S) -> Task where S: Into<String> {
+  pub fn new_task<S>(image: &[u8], name: S, me: TaskHandle) -> Task where S: Into<String> {
     panic!("proper tasks not implemented yet")
   }
   pub fn new_nulltask() -> Task {
@@ -54,11 +44,26 @@ impl Task {
       status: Status::New,
       parent: TaskHandle::zero(),
       supervisor: TaskHandle::zero(),
+      me: TaskHandle::zero(),
       name: "null()".to_string(),
+    }
+  }
+  /// Copies the current task and state into a new, inactive task
+  pub fn spawn(&self) -> Task {
+    Task {
+      state: self.state.clone(),
+      status: Status::New,
+      parent: self.me.clone(),
+      supervisor: self.me.clone(),
+      me: TaskHandle::gen(),
+      name: self.name.clone(),
     }
   }
   pub fn name(&self) -> String {
     self.name.clone()
+  }
+  pub fn me(&self) -> TaskHandle {
+    self.me
   }
   pub fn state(&self) -> &State {
     &self.state
@@ -88,11 +93,17 @@ impl Task {
     self.state.mode() == crate::process_manager::state::CPUMode::Null
   }
   pub fn switch_to(&mut self, next: &mut Task) {
-    debug!("Switching tasks");
+    trace!("state switch imminent, hold onto your hooves");
+    if self.me == next.me {
+      trace!("yield to self, returning");
+      return;
+    }
+    trace!("updating task status");
     self.status = Status::Runnable;
     next.status = Status::Running;
-    self.state.switch_to(&mut next.state);
-    panic!("returned from state restore");
+    trace!("performing state switch");
+    self.state.switch_to(next.state_mut());
+    trace!("returned from state restore");
   }
 }
 

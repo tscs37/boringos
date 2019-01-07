@@ -14,8 +14,7 @@ macro_rules! make_stack {
       struct StackContainer([u8; STACK_SIZE]);
       static mut STACK: StackContainer = StackContainer([0; STACK_SIZE]);
       let stack_start = VirtAddr::from_ptr(unsafe{&STACK});
-      let stack_end = stack_start + STACK_SIZE;
-      stack_end
+      stack_start + STACK_SIZE
   }}
 }
 lazy_static! {

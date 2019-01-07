@@ -142,6 +142,9 @@ impl ::core::cmp::PartialOrd for PhysAddr {
     self.as_u64().partial_cmp(&rhs.as_u64())
   }
 }
+
+use crate::vmem::pagetable::Page;
+
 impl PhysAddr {
   pub fn new(p: u64) -> Option<PhysAddr> {
     assert!(p < 0x0000_8000_0000_0000 ||
@@ -198,5 +201,8 @@ impl PhysAddr {
   }
   pub fn as_physaddr(&self) -> ::x86_64::PhysAddr {
     ::x86_64::PhysAddr::new(self.0.as_ptr() as u64)
+  }
+  pub fn into_page(&self) -> Page {
+    Page::containing_address(self.as_usize())
   }
 }

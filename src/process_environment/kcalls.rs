@@ -48,10 +48,6 @@ pub fn bos_log_error_fmt(msg: core::fmt::Arguments) {
   error!("{}", msg);
 }
 
-pub fn bos_yield(th: u64) {
-  panic!("TODO: implement yield")
-}
-
 // bos_raise_page_limit raises the amount of memory the program may use
 // This limit includes code, stack, bss and data memory by default.
 // Each call may raise the limit by up to 256MB.
@@ -98,22 +94,37 @@ pub fn bos_promise_pages(pages: u16) -> u16 {
   panic!("TODO:")
 }
 
-// creates a new task and returns the handle for the task
-// The memory section referred to by code_ is loaded into non-writable, executable memory
-// The memory section referred to by bss_ is loaded into writable, non-executable memory
-// bss is not the same as data memory, the bss memory cannot be expanded after the task is created
-// The task is created in a paused New state, which means the scheduler will not implicitly execute it
-// To run the task, simply explicitly yield to it.
-pub fn bos_new_task(code_ptr: *mut u8, code_size: u32, bss_ptr: *mut u8, bss_size: u32) -> u64 {
-  panic!("TODO:")
+/// Copies the current task into a new task, sharing all memory and state
+/// The resulting task is not directly runnable as the kernel makes no
+/// modification of state
+pub fn bos_spawn_task() -> u64 {
+  match userspace().in_scheduler_mut_spin(|mut sched| {
+    sched.spawn_from_task()
+  }) {
+    None => 0,
+    Some(th) => th.into_c(),
+  }
 }
 
-// Unlike bos_new_task this will create a runnable task.
-// Return behaviour differs by where it returns. The newly spawned task
-// will receive the task handle of the previously existing task and the previously
-// existing task will receive the task handle of the newly spawned task.
-pub fn bos_copy_task() -> u64 {
-  panic!("TODO:")
+/// Resets the state's memory and then copies the given code image into
+/// the task
+pub fn bos_set_codeimage(th: u64, code_img: &[u8]) -> Result<usize, ()> {
+  with_task_mut(th.into(), |task| {
+    match task {
+      Some(mut task) => {
+        let state = task.state_mut();
+        state.reset();
+        state.set_codeimage(code_img)
+      }
+      None => {
+        0
+      }
+    }
+  })
+}
+
+pub fn bos_yield(th: u64) {
+  yield_to(th)
 }
 
 // kills and destroys the given task handle
@@ -126,14 +137,9 @@ pub fn bos_destroy_task(th: u64) {
 
 // returns the current task handle
 pub fn bos_own_th() -> u64 {
-  panic!("TODO:")
-}
-
-// Create a codeimage; this is a section of memory that will be copied into a dedicated
-// pages of memory and can be used exactly once. If the code image is assigned to a task
-// the handle is invalidated
-pub fn bos_make_codeimage(ptr: *mut u8, size: u32) -> u64 {
-  panic!("TODO:")
+  userspace().in_scheduler_spin(|sched| {
+    sched.current_task()
+  }).into_c()
 }
 
 pub fn bos_set_scheduler(th: u64) {
@@ -145,5 +151,15 @@ pub fn bos_add_event_handler(intr: u16, ptr: *mut u8) {
 }
 
 pub fn bos_register_ipc(ptr: *mut u8) -> u64 {
+  panic!("TODO:")
+}
+
+/// The specified IPC Symbol is masked; it becomes unavailable to the process itself
+/// but can be accessed and modified by other processes.
+/// The returned value indicates if the symbol was already masked, the mask call
+/// can be masked as well.
+/// Masked values behave as if they do not exist but there are no security related promises;
+/// A process may use CPU timing to find out if a value is masked or not.
+pub fn bos_mask_ipc(symt: u16, sym: &str) -> bool {
   panic!("TODO:")
 }

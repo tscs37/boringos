@@ -84,7 +84,7 @@ impl PageList {
         return true;
       }
     }
-    return false;
+    false
   }
   pub fn has_empty(&self) -> bool {
     for x in 0..PAGES_PER_BLOCK {
@@ -92,14 +92,14 @@ impl PageList {
         return true;
       }
     }
-    return false;
+    false
   }
   pub fn count_free(&self) -> usize {
     let mut out = 0;
     for x in 0..PAGES_PER_BLOCK {
       if !self.used[x] && !self.pages[x].is_none() { out += 1; }
     }
-    return out;
+    out
   }
   pub fn count_empty(&self) -> usize {
     let mut out = 0;
@@ -108,7 +108,7 @@ impl PageList {
         out += 1;
       }
     }
-    return out;
+    out
   }
   // panics if pr is too large
   fn insert_from_range(&mut self, pr: PageRange) {
@@ -173,7 +173,7 @@ impl PageRange {
       trace!("building new pagerange");
       let pr = PageRange{
         start: self.start,
-        pages: pages,
+        pages,
         next: PageListLink::None,
         prev: PageListLink::None,
       };
@@ -527,14 +527,14 @@ impl PageListLink {
                         self.release(PhysAddr::new_or_abort(rref as *mut _ as u64));
                       }
                       trace!("grabbed all we need, returning...");
-                      return Ok(needed);
+                      Ok(needed)
                     }
                   }
                 } else {
                   trace!("need more, recursing");
                   let max_needed = needed- rref.pages;
                   // convert all pages we have
-                  return match self.convert_range(rref.pages) {
+                  match self.convert_range(rref.pages) {
                     Ok(a) => {
                       match self.convert_range(max_needed) {
                         Ok(b) => Ok(a+b),
@@ -542,7 +542,7 @@ impl PageListLink {
                       }
                     }
                     Err(e) => Err(e),
-                  };
+                  }
                 }
               }
             }
