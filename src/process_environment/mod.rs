@@ -103,13 +103,13 @@ impl MaskList {
   fn new() -> Self {
     MaskList(BTreeSet::new())
   }
-  fn contains<W>(self, s: W) -> bool where W: Into<String> {
+  fn contains<W>(&self, s: W) -> bool where W: Into<String> {
     self.0.contains(&s.into())
   }
-  fn add<W>(self, s: W) -> bool where W: Into<String> {
+  fn add<W>(&mut self, s: W) -> bool where W: Into<String> {
     self.0.insert(s.into())
   }
-  fn del<W>(self, s: W) -> bool where W: Into<String> {
+  fn del<W>(&mut self, s: W) -> bool where W: Into<String> {
     self.0.remove(&s.into())
   }
 }
