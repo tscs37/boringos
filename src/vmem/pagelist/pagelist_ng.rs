@@ -45,6 +45,7 @@ impl PageMap {
     Ok(self_alloc)
   }
   /// copies the pagemap into a memory location and forgets about the result
+  /// The pagemap now lives at the specified pointer location
   unsafe fn move_into(self, pm: *mut PageMap) {
     (*pm).start = self.start;
     (*pm).size = self.size;
@@ -213,10 +214,7 @@ impl PagePool for PageMapWrapper {
       }
     }
   }
-
 }
-
-//TODO: implement debug for PageMap
 
 assert_eq_size!(check_phys_addr_size; PhysAddr,                 u64);
 assert_eq_size!(check_page_map_size; PageMap,                   [u8; 4096]);

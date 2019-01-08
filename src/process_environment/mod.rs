@@ -20,6 +20,7 @@ mod kcalls;
 pub struct TaskEnvironment {
   ipc_registry: IPCRegistry,
   task_data_registry: TaskDataRegistry,
+  mask_list: MaskList,
   // TaskEnv locks internally, externally all operations must be atomic
   //TODO:
   _rw_lock: RwLock<()>,
@@ -48,6 +49,7 @@ impl TaskEnvironment {
       _rw_lock: RwLock::new(()),
       ipc_registry: IPCRegistry::new(),
       task_data_registry: TaskDataRegistry::new(),
+      mask_list: MaskList::new(),
     }
   }
 }
@@ -93,11 +95,29 @@ pub fn init() {
   crate::kinfo_mut().init_task_env();
 }
 
+use alloc::collections::BTreeSet;
+#[derive(Clone, Debug)]
+pub struct MaskList(BTreeSet<String>);
+
+impl MaskList {
+  fn new() -> Self {
+    MaskList(BTreeSet::new())
+  }
+  fn contains<W>(self, s: W) -> bool where W: Into<String> {
+    self.0.contains(&s.into())
+  }
+  fn add<W>(self, s: W) -> bool where W: Into<String> {
+    self.0.insert(s.into())
+  }
+  fn del<W>(self, s: W) -> bool where W: Into<String> {
+    self.0.remove(&s.into())
+  }
+}
+
 pub extern fn symrf(sym_type: u16, sym_name: &str) -> *mut u8 {
-  //TODO: switch to kernel stack
   let st = SymbolType::from(sym_type);
   drop(sym_type);
-  //trace!("looking up symbol {:?}({})", st, sym_name);
+  trace!("looking up symbol {:?}({})", st, sym_name);
   match st {
     Some(st) => {
       match st {

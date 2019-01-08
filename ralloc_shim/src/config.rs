@@ -79,7 +79,7 @@ pub fn extra_fresh(size: usize) -> usize {
 /// necessary. This function calculate the memory to be BRK'd based on the necessary memory.
 ///
 /// The return value specifies how much _more_ space is requested.
-// TODO: Move to shim.
+//  Move to shim.
 #[inline]
 pub fn extra_brk(size: usize) -> usize {
     // TODO: Tweak this.

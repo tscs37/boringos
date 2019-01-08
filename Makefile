@@ -44,7 +44,9 @@ clean_pid0:
 	@echo "Cleaning PID0"
 	@rm -r pid0/target/ || exit 0
 
-bootimage: initramdata/pid0 initramdata/initramfs.bin
+bootimage: initramdata/pid0 initramdata/initramfs.bin kernel
+
+kernel:
 	@echo "Building Kernel image"
 ifeq ($(KERNEL_BUILD_MODE),debug)
 	@bootimage build --target $(KERNEL_TARGET).json
