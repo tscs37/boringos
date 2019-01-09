@@ -1,4 +1,5 @@
 #![no_std]
+#![feature(concat_idents)]
 
 use core::mem::transmute;
 pub type SymRf = extern "C" fn (sym_type: u16, sym_name: &str) -> *const u8;
@@ -28,7 +29,7 @@ macro_rules! import_symbol {
   ($name:ident as $actualname:ident, $t:ty) => {
     let $actualname: &$t = $crate::get_symbol($crate::SymbolType::IPC, stringify!($name));
     let $actualname: $t = *$actualname;
-  }
+  };
 }
 
 #[repr(u16)]

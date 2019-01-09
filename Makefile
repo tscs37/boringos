@@ -21,8 +21,8 @@ all: bootimage qemu
 release: qemu_release
 
 rustup: .rustup
-	@rustup toolchain add nightly-2019-01-01
-	@rustup override add nightly-2019-01-01
+	@rustup toolchain add nightly-2019-01-08
+	@rustup override add nightly-2019-01-08
 	@rustup component add rust-src
 	@rustup component add rls-preview rust-analysis
 	@cargo install cargo-xbuild --force

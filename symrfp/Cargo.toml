@@ -3,3 +3,6 @@ name = "symrfp"
 version = "0.1.0"
 authors = ["Tim Schuster <mail@timschuster.info>"]
 edition = "2018"
+
+#[dependencies]
+#symrfp_macros = { path = "./symrfp_macros" }

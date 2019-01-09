@@ -125,17 +125,17 @@ impl KernelInfo {
       Memory::Code(s) => Memory::Code(MemoryUserRef::from(
         self
           .current_code_memory_ref_int
-          .swap(s.into(), Ordering::SeqCst),
+          .swap(s.clone().into(), Ordering::SeqCst),
       )),
       Memory::User(s) => Memory::User(MemoryUserRef::from(
         self
           .current_data_memory_ref_int
-          .swap(s.into(), Ordering::SeqCst),
+          .swap(s.clone().into(), Ordering::SeqCst),
       )),
       Memory::Stack(s) => Memory::Stack(MemoryUserRef::from(
         self
           .current_stack_memory_ref_int
-          .swap(s.into(), Ordering::SeqCst),
+          .swap(s.clone().into(), Ordering::SeqCst),
       )),
       _ => panic!("tried to assign non-code memory to code memory"),
     }

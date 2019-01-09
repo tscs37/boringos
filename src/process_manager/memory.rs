@@ -6,19 +6,21 @@ use crate::vmem::mapper::{map, map_zero, unmap, MapType};
 use crate::vmem::PhysAddr;
 
 #[derive(Clone, Copy)]
-pub struct MemoryUserRef(*mut Rc<RefCell<MemoryUser>>);
+pub struct MemoryUserRef {
+  internal_ref: *mut Rc<RefCell<MemoryUser>>,
+}
 
 impl core::ops::Deref for MemoryUserRef {
   type Target = RefCell<MemoryUser>;
 
   fn deref(&self) -> &RefCell<MemoryUser> {
-    unsafe { (*self.0).deref() }
+    unsafe { (*self.internal_ref).deref() }
   }
 }
 
 impl core::fmt::Debug for MemoryUserRef {
   fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-    write!(f, "MUR:{:018x}=>{:?}", self.0 as usize, *self.borrow())
+    write!(f, "MUR:{:018x}=>{:?}", self.internal_ref as usize, *self.borrow())
   }
 }
 
@@ -40,23 +42,39 @@ impl MemoryUserRef {
     })));
     let ptr = Box::into_raw(data);
     assert!(ptr as usize != 0, "memory user reference null pointer");
-    MemoryUserRef(ptr)
+    MemoryUserRef::new_from_ptr(ptr)
   }
-  pub fn from(v: *mut Rc<RefCell<MemoryUser>>) -> MemoryUserRef {
+  fn new_from_ptr(ptr: *mut Rc<RefCell<MemoryUser>>) -> Self {
+    MemoryUserRef{ internal_ref: ptr }
+  }
+  /// Turns a memory reference into a Copy-on-Write reference. Mooooo!
+  pub fn turn_into_cow(&self) -> MemoryUserRef {
+    panic!("TODO: implement COW")
+  }
+  pub fn drop_and_release_memory(&self) {
+    panic!("TODO: implement D&R")
+  }
+  pub fn add_page(&self, pg: PhysAddr) {
+    unsafe { (**self.internal_ref).borrow_mut() }.pages.push(pg)
+  }
+  pub fn page_count(&self) -> usize {
+    let mem = unsafe { (**self.internal_ref).borrow_mut() };
+    mem.page_count()
+  }
+}
+
+impl Into<*mut Rc<RefCell<MemoryUser>>> for MemoryUserRef {
+  fn into(self) -> *mut Rc<RefCell<MemoryUser>> {
+    self.internal_ref
+  }
+}
+
+impl From<*mut Rc<RefCell<MemoryUser>>> for MemoryUserRef {
+  fn from(v: *mut Rc<RefCell<MemoryUser>>) -> MemoryUserRef {
     if (v as u64) == 0 {
       return MemoryUserRef::new_empty();
     } 
-    MemoryUserRef(v)
-  }
-  pub fn into(&self) -> *mut Rc<RefCell<MemoryUser>> {
-    self.0
-  }
-  pub fn add_page(&self, pg: PhysAddr) {
-    unsafe { (**self.0).borrow_mut() }.pages.push(pg)
-  }
-  pub fn page_count(&self) -> usize {
-    let mem = unsafe { (**self.0).borrow_mut() };
-    mem.page_count()
+    MemoryUserRef::new_from_ptr(v)
   }
 }
 
