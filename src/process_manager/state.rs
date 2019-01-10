@@ -323,6 +323,7 @@ pub unsafe fn switch_to(next_task: Arc<RefCell<crate::process_manager::Task>>, n
     let kinfo = crate::kinfo_mut();
     let set_switching_tasks = kinfo.set_switching_tasks(false, true);
     let current_task_handle = kinfo.swap_current_task(0.into(), nt_handle);
+    let current_task_handle = current_task_handle.expect("could not swap process on kinfo init");
     assert_eq!(set_switching_tasks, false, "enter userspace only outside task switching");
     assert_eq!(current_task_handle.into_c(), 0, "enter userspace from no running tasks");
     kinfo.set_memory_ref(&state.code);

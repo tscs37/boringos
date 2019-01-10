@@ -5,12 +5,13 @@ use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
 use crate::process_manager::{Memory, MemoryUser, MemoryUserRef, TaskHandle};
 use crate::vmem::PhysAddr;
 use spin::RwLock;
+use atomic::Atomic;
 use crate::process_environment::TaskEnvironment;
 
 pub struct KernelInfo {
   switching_tasks_int: AtomicBool,
   mapping_task_image_int: AtomicBool,
-  current_task_handle_int: AtomicU64,
+  current_task_handle_int: Atomic<TaskHandle>,
   current_code_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
   current_data_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
   current_stack_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
@@ -22,7 +23,7 @@ impl KernelInfo {
     KernelInfo {
       switching_tasks_int: AtomicBool::new(false),
       mapping_task_image_int: AtomicBool::new(false),
-      current_task_handle_int: AtomicU64::new(0),
+      current_task_handle_int: Atomic::new(TaskHandle::from_c(0)),
       current_code_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
       current_data_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
       current_stack_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
@@ -77,11 +78,12 @@ impl KernelInfo {
     self.switching_tasks_int.compare_and_swap(cur, new, Ordering::SeqCst)
   }
   pub fn get_current_task(&self) -> TaskHandle {
-    self.current_task_handle_int.load(Ordering::SeqCst).into()
+    self.current_task_handle_int.load(Ordering::SeqCst)
   }
-  pub fn swap_current_task(&self, c: TaskHandle, v: TaskHandle) -> TaskHandle {
-    trace!("swapping current task to {:#018x}", v);
-    self.current_task_handle_int.compare_and_swap(c.into_c(), v.into_c(), Ordering::SeqCst).into()
+  pub fn swap_current_task(&self, c: TaskHandle, v: TaskHandle) -> Result<TaskHandle, TaskHandle> {
+    trace!("swapping current task to {}", v);
+    self.current_task_handle_int.
+      compare_exchange(c, v, Ordering::SeqCst, Ordering::SeqCst)
   }
   pub fn add_code_page(&self, p: PhysAddr) {
     trace!("adding {} to active code memory", p);

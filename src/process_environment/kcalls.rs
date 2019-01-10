@@ -97,7 +97,7 @@ pub fn bos_promise_pages(pages: u16) -> u16 {
 /// Copies the current task into a new task, sharing all memory and state
 /// The resulting task is not directly runnable as the kernel makes no
 /// modification of state
-pub fn bos_spawn_task() -> u64 {
+pub fn bos_spawn_task() -> u128 {
   match userspace().in_scheduler_mut_spin(|mut sched| {
     sched.spawn_from_task()
   }) {
@@ -108,7 +108,7 @@ pub fn bos_spawn_task() -> u64 {
 
 /// Resets the state's memory and then copies the given code image into
 /// the task
-pub fn bos_set_codeimage(th: u64, code_img: &[u8]) -> Result<usize, ()> {
+pub fn bos_set_codeimage(th: u128, code_img: &[u8]) -> Result<usize, ()> {
   with_task_mut(th.into(), |task| {
     match task {
       Some(mut task) => {
@@ -123,7 +123,7 @@ pub fn bos_set_codeimage(th: u64, code_img: &[u8]) -> Result<usize, ()> {
   })
 }
 
-pub fn bos_yield(th: u64) {
+pub fn bos_yield(th: u128) {
   yield_to(th)
 }
 
@@ -131,18 +131,18 @@ pub fn bos_yield(th: u64) {
 // the task will be notified via a SIGTERM signal event
 // the receiving task will be terminated when the signal handler
 // returns or the signal handler times out.
-pub fn bos_destroy_task(th: u64) {
+pub fn bos_destroy_task(th: u128) {
   panic!("TODO:")
 }
 
 // returns the current task handle
-pub fn bos_own_th() -> u64 {
+pub fn bos_own_th() -> u128 {
   userspace().in_scheduler_spin(|sched| {
     sched.current_task()
   }).into_c()
 }
 
-pub fn bos_set_scheduler(th: u64) {
+pub fn bos_set_scheduler(th: u128) {
   panic!("TODO:")
 }
 

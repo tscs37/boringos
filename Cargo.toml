@@ -17,6 +17,7 @@ raw-cpuid = "6.0.0"
 pic8259_simple = "0.1.1"
 rand_chacha = "0.1.0"
 rand = { version = "0.6", default-features = false }
+atomic = {version = "0.4", features = ["nightly"]}
 
 [dependencies.goblin]
 version = "0.0.19"

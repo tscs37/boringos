@@ -67,7 +67,7 @@ impl Userspace {
     use crate::common::yield_to;
     match th {
       None => yield_to(0),
-      Some(th) => yield_to(th.into().into() as u64),
+      Some(th) => yield_to(th.into_c()),
     }
   }
 }

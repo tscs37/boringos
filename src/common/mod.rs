@@ -77,7 +77,7 @@ pub fn release_page(pa: PhysAddr) -> Result<(), PagePoolReleaseError>{
 
 #[no_mangle]
 #[inline(never)]
-pub extern "C" fn yield_to(t: u64) {
+pub extern "C" fn yield_to(t: u128) {
   let th = TaskHandle::from_c(t);
   debug!("Yielding to task {}", th);
   use crate::process_manager::TaskHandle;

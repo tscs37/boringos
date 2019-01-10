@@ -5,41 +5,53 @@ use alloc::sync::Arc;
 use core::cell::RefCell;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct Handle(u64);
+pub struct Handle(u128);
 
 impl Handle {
-  pub const fn into(self) -> u64 {
+  pub fn gen() -> Handle {
+    Handle(crate::bindriver::cpu::rng::get_u128())
+  }
+}
+
+impl From<u128> for Handle {
+  fn from(t: u128) -> Handle {
+    Handle(t)
+  }
+}
+
+impl Into<u128> for Handle {
+  fn into(self) -> u128 {
     self.0
   }
-  pub const fn from(x: u64) -> Handle {
-    Handle(x)
-  }
-  pub fn gen() -> Handle {
-    Handle(crate::bindriver::cpu::rng::get_u64())
+}
+
+impl Into<[u8; 16]> for Handle {
+  fn into(self) -> [u8; 16] {
+    self.0.to_ne_bytes()
   }
 }
 
 impl ::core::fmt::Display for Handle {
     fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-      f.write_fmt(format_args!("{:x}", self.0))
+      f.write_fmt(format_args!("{:x}", self))
   }
 }
 
 impl ::core::fmt::Debug for Handle {
     fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-      f.write_fmt(format_args!("{:x}", self.0))
+      f.write_fmt(format_args!("{:x}", self))
   }
 }
 
 impl ::core::fmt::LowerHex for Handle {
     fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-      f.write_fmt(format_args!("{:016x}", self.0))
+      f.write_fmt(format_args!("{:032x}", self.0))
   }
 }
 
 impl ::core::fmt::UpperHex for Handle {
     fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-      f.write_fmt(format_args!("{:016X}", self.0))
+      f.write_fmt(format_args!("{:032X}", self.0))
   }
 }
 
@@ -67,35 +79,42 @@ impl TaskHandle {
   pub const fn into(self) -> Handle {
     self.0
   }
-  pub const fn into_c(self) -> u64 {
-    self.0.into()
+  pub const fn into_c(self) -> u128 {
+    (self.0).0
   }
   pub const fn from(x: Handle) -> Self {
     TaskHandle(x)
   }
-  pub const fn from_c(t: u64) -> Self {
+  pub const fn from_c(t: u128) -> Self {
     TaskHandle(Handle(t))
   }
   pub fn gen() -> TaskHandle {
     TaskHandle(Handle::gen())
   }
   pub fn is_scheduler(&self) -> bool {
-    self.0.into() == 0
+    let t : u128 = self.0.into();
+    t == 0
   }
   pub fn zero() -> TaskHandle {
     Self::from(Handle(0))
   }
 }
 
-impl From<u64> for TaskHandle {
-  fn from(t: u64) -> Self {
+impl From<u128> for TaskHandle {
+  fn from(t: u128) -> Self {
     TaskHandle(Handle::from(t))
   }
 }
 
-impl Into<u64> for TaskHandle {
-  fn into(self) -> u64 {
+impl Into<u128> for TaskHandle {
+  fn into(self) -> u128 {
     self.into_c()
+  }
+}
+
+impl From<[u8; 16]> for TaskHandle {
+  fn from(x: [u8; 16]) -> TaskHandle {
+    TaskHandle(Handle(u128::from_le_bytes(x)))
   }
 }
 
@@ -123,4 +142,4 @@ impl ::core::fmt::UpperHex for TaskHandle {
   }
 }
 
-assert_eq_size!(check_task_handle_size; TaskHandle, u64);
+assert_eq_size!(check_task_handle_size; TaskHandle, u128);

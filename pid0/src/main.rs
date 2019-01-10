@@ -65,10 +65,10 @@ fn task() {
     bos_log_debug("memory allocator ok!");
   }
   import_symbol!(bos_log_debug_fmt, fn(core::fmt::Arguments));
-  import_symbol!(bos_spawn_task, fn() -> u64);
+  import_symbol!(bos_spawn_task, fn() -> u128);
   let scheduler_th = bos_spawn_task();
   bos_log_debug_fmt(format_args!("scheduler task handle: {:#018x}", scheduler_th));
-  import_symbol!(bos_yield, fn(u64));
+  import_symbol!(bos_yield, fn(u128));
   sp.write_str("loaded smybols, setting up scheduler...\n");
   //TODO: parse initramfs
   //TODO: load scheduler binary
