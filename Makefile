@@ -6,6 +6,7 @@ CRATE = boringos
 QEMU_MEMORY = 512
 QEMU_PLATFORM = system-x86_64
 KERNEL_BUILD_MODE = debug
+RUST_VERSION = nightly-2019-01-10
 BOOTIMG_FILE = target/$(KERNEL_TARGET)/$(KERNEL_BUILD_MODE)/bootimage-$(CRATE).bin
 BIN_FILE = target/$(KERNEL_TARGET)/debug/$(CRATE)
 QEMU_OPTIONS = -net none -m $(QEMU_MEMORY) \
@@ -21,8 +22,8 @@ all: bootimage qemu
 release: qemu_release
 
 rustup: .rustup
-	@rustup toolchain add nightly-2019-01-08
-	@rustup override add nightly-2019-01-08
+	@rustup toolchain add $(RUST_VERSION)
+	@rustup override add $(RUST_VERSION)
 	@rustup component add rust-src
 	@rustup component add rls-preview rust-analysis
 	@cargo install cargo-xbuild --force
