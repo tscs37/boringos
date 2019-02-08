@@ -150,10 +150,7 @@ impl PhysAddr {
     assert!(p < 0x0000_8000_0000_0000 ||
       p >= 0xffff_8000_0000_0000,
       "invalid address: {:#018x}", p);
-    match NonNull::new(p as *mut u8) {
-      Some(nn) => Some(PhysAddr(nn)),
-      None => None
-    }
+    Some(PhysAddr(NonNull::new(p as *mut u8)?))
   }
   pub fn new_usize(p: usize) -> Option<PhysAddr> {
     PhysAddr::new(p as u64)

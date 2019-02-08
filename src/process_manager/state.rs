@@ -253,6 +253,7 @@ impl State {
   }
   #[inline(never)]
   pub fn switch_to(&mut self, next: &mut State) {
+    //todo: switch to kernel stack
     debug!("Switching context");
     unsafe {
       self.active = false;
@@ -279,7 +280,7 @@ impl State {
       push r15
       pushfq
       "
-      :::: "intel", "volatile"
+      :::"memory": "intel", "volatile"
     );
       asm!("mov $0, rsp": "=r"(self.rsp) : : "memory": "intel", "volatile");
       asm!("mov rsp, $0": : "r"(next.rsp) : "memory" : "intel", "volatile");

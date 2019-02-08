@@ -26,7 +26,8 @@
       "--entry=main", 
       "--Tdata=0x000001f000000000",
       "--Ttext=0x0000000001020000",
-      "--fatal-warnings"
+      "--fatal-warnings",
+      "--nostdlib", "--no-omagic"
     ]
   }
 }
