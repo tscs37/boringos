@@ -12,7 +12,7 @@ pub use crate::vmem::pagetable::PAGE_ADDR_FILTER;
 
 pub const PAGE_SIZE: usize = 4096;
 
-const BOOT_MEMORY_PAGES: u16 = 16;
+const BOOT_MEMORY_PAGES: u16 = 32;
 
 pub const PAGE_TABLE_LO: usize = 0xffff_ff80_0000_0000;
 pub const KSTACK_GUARD: usize  = 0xffff_ff79_ffff_0000;
@@ -67,10 +67,15 @@ static mut BOOT_PAGES: [StaticPage; BOOT_MEMORY_PAGES as usize] =
 pub enum InitError {
   NoneError(NoneError),
   AllocError(PagePoolAllocationError),
+  Infallible(core::convert::Infallible)
 }
 
 impl From<PagePoolAllocationError> for InitError {
   fn from(p: PagePoolAllocationError) -> InitError { InitError::AllocError(p) }
+}
+
+impl From<core::convert::Infallible> for InitError {
+  fn from(p: core::convert::Infallible) -> InitError { InitError::Infallible(p) }
 }
 
 impl From<NoneError> for InitError {
@@ -94,10 +99,10 @@ impl<'a> PageManager {
     trace!("pagepool allocated");
     Ok(())
   }
-  fn pagepool(&self) -> &PagePool {
+  fn pagepool(&self) -> &dyn PagePool {
     self.pagepool.as_ref().unwrap()
   }
-  fn pagepool_mut(&mut self) -> &mut PagePool {
+  fn pagepool_mut(&mut self) -> &mut dyn PagePool {
     self.pagepool.as_mut().unwrap()
   }
   fn get_boot_base(&self) -> PhysAddr {
@@ -108,17 +113,21 @@ impl<'a> PageManager {
     }
   }
 
+  fn print_free_mem(&self) {
+    let pages = self.free_memory();
+    let mem = pages * 4096;
+    trace!("Free memory now {} KiB, {} MiB, {} Pages",
+      mem / 1024,
+      mem / 1024 / 1024,
+      pages
+    );
+  }
+
   pub unsafe fn add_memory(&mut self, start: PhysAddr, num_pages: usize) -> Result<(), PagePoolAppendError> {
+    self.print_free_mem();
+    trace!("Adding MMAPE {}+{} to pool", start, num_pages);
     self.pagepool_mut().add_memory(start, num_pages)?;
-    {
-      let pages = self.free_memory();
-      let mem = pages * 4096;
-      trace!("Free memory now {} KiB, {} MiB, {} Pages",
-        mem / 1024,
-        mem / 1024 / 1024,
-        pages
-      )
-    }
+    self.print_free_mem();
     Ok(())
   }
   pub fn free_memory(&self) -> usize {

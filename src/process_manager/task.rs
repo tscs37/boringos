@@ -1,7 +1,7 @@
 use crate::process_manager::TaskHandle;
 use crate::process_manager::state::State;
 use crate::alloc::string::String;
-use crate::alloc::prelude::ToString;
+use crate::alloc::string::ToString;
 
 #[derive(Clone)]
 pub struct Task {

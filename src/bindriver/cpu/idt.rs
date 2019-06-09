@@ -10,7 +10,7 @@ fn crack_locks() {
 
 macro_rules! busy_intr_handler {
     ($name:ident) => {
-        extern "x86-interrupt" fn $name(stack_frame: &mut ExceptionStackFrame) {
+        extern "x86-interrupt" fn $name(stack_frame: &mut InterruptStackFrame) {
             crack_locks();
             debug!("Interrupt {}:\n{:?}", stringify!($name), stack_frame);
             hlt_cpu!();
@@ -20,7 +20,7 @@ macro_rules! busy_intr_handler {
 
 macro_rules! busy_intr_handle_errcode {
     ($name:ident) => {
-        extern "x86-interrupt" fn $name(stack_frame: &mut ExceptionStackFrame, err: u64) {
+        extern "x86-interrupt" fn $name(stack_frame: &mut InterruptStackFrame, err: u64) {
             crack_locks();
             debug!(
                 "Interrupt {} ({:#018x}):\n{:?}",
@@ -64,10 +64,10 @@ lazy_static! {
         // yes, it breaks if you look at it funny
         // stop looking at it
         let page_fault: 
-            extern "x86-interrupt" fn(&mut ExceptionStackFrame, u64)
+            extern "x86-interrupt" fn(&mut InterruptStackFrame, u64)
             = page_fault;
         let page_fault: 
-            extern "x86-interrupt" fn(&mut ExceptionStackFrame, PageFaultErrorCode)
+            extern "x86-interrupt" fn(&mut InterruptStackFrame, PageFaultErrorCode)
             = unsafe{core::mem::transmute(page_fault)};
         unsafe{idt.page_fault
             .set_handler_fn(page_fault)
@@ -94,12 +94,12 @@ busy_intr_handle_errcode!(segment_not_present);
 busy_intr_handle_errcode!(stack_segment_fault);
 busy_intr_handle_errcode!(general_protection_fault);
 
-extern "x86-interrupt" fn breakpoint(stack_frame: &mut ExceptionStackFrame) {
+extern "x86-interrupt" fn breakpoint(stack_frame: &mut InterruptStackFrame) {
     dump_stack_addr!();
     debug!("BREAKPOINT\n{:#?}\n", stack_frame);
 }
 
-extern "x86-interrupt" fn double_fault(stack_frame: &mut ExceptionStackFrame, error_code: u64) {
+extern "x86-interrupt" fn double_fault(stack_frame: &mut InterruptStackFrame, error_code: u64) {
     crack_locks();
     error!("Double Fault, Kernel Halting...");
     error!("Error: {:x}", error_code);
@@ -109,7 +109,7 @@ extern "x86-interrupt" fn double_fault(stack_frame: &mut ExceptionStackFrame, er
 }
 
 extern "x86-interrupt" fn page_fault(
-    stack_frame: &mut ExceptionStackFrame,
+    stack_frame: &mut InterruptStackFrame,
     error_code: u64,
 ) {
     // LLVM fucks up the stack alignment, so we unfuck it and force the value through a sensible place
@@ -151,7 +151,7 @@ extern "x86-interrupt" fn page_fault(
     
 }
 
-extern "x86-interrupt" fn timer_interrupt(_stack_frame: &mut ExceptionStackFrame) {
+extern "x86-interrupt" fn timer_interrupt(_stack_frame: &mut InterruptStackFrame) {
     trace!("timer interrupt");
     //TODO: dispatch all registered event handlers
     crate::bindriver::cpu::pic::end_of_interrupt(TIMER_INTERRUPT_ID);

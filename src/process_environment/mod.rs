@@ -1,119 +1,16 @@
+///
+/// This crate provides the basic syscalls that BOS implements for the process environment
+/// The crate also provides the symbol resolver function (symrf) that processes use
+/// to obtain a pointer to the correct function
+/// 
 
-use alloc::string::String;
-//use crate::process_manager::{State};
-use alloc::collections::BTreeMap;
-use crate::process_manager::TaskHandle;
+
 use symrfp::SymbolType;
-use spin::RwLock;
 
 mod kcalls;
 
-// The task environment provides a set of data the current task has set
-// or available to it (set by other tasks)
-// The kernel inherits task data; if the symbol is not found for the current task,
-// it looks at the task env of the parent up until the highest available parent
-// is reached. Symbol lookups should be rare as a process only needs to do them
-// when it first accesses a function. To avoid frequent lookups, a task should
-// cache them and if spawning subtasks (threads), they should have access to this
-// cache as well.
-#[derive(Debug)]
-pub struct TaskEnvironment {
-  ipc_registry: IPCRegistry,
-  task_data_registry: TaskDataRegistry,
-  mask_list: MaskList,
-  // TaskEnv locks internally, externally all operations must be atomic
-  //TODO:
-  _rw_lock: RwLock<()>,
-}
-
-unsafe impl Sync for TaskEnvironment{}
-
-impl TaskEnvironment {
-  pub fn taskdata_add() {}
-  pub fn taskdata_set() {}
-  pub fn taskdata_get() {}
-  pub fn taskdata_del() {}
-  pub fn ipc_add() {}
-  // ipc_proxy replaces an IPC symbol with the specified symbol and returns the pointer of the previous value
-  // ipc does not allow removing symbols, programs may hold a pointer to it
-  // proxy is how you change it; you get the old pointer and set your own as the new
-  // you can forward the call, modify parameters and return data or simply do something
-  // else entirely
-  pub fn ipc_proxy() {}
-  pub fn ipc_get() {}
-}
-
-impl TaskEnvironment {
-  pub fn new() -> Self {
-    TaskEnvironment {
-      _rw_lock: RwLock::new(()),
-      ipc_registry: IPCRegistry::new(),
-      task_data_registry: TaskDataRegistry::new(),
-      mask_list: MaskList::new(),
-    }
-  }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub enum Visibility {
-  Full, // Allow listing the entry
-  Hidden, // Do not list entry but available via _get() (sold under the counter)
-  Private(TaskHandle), // Only the specified Task may access this item
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub struct IPCName(String);
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TaskData(String);
-
-#[derive(Clone, Debug)]
-pub enum IPCTarget{
-  //System(State),
-  //TODO: add task IPC target
-}
-
-#[derive(Clone, Debug)]
-pub struct IPCRegistry(BTreeMap<IPCName, (Visibility, IPCTarget)>);
-
-impl IPCRegistry {
-  fn new() -> Self {
-    IPCRegistry(BTreeMap::new())
-  }
-}
-
-#[derive(Clone, Debug)]
-pub struct TaskDataRegistry(BTreeMap<(TaskHandle, String), (Visibility, TaskData)>);
-
-impl TaskDataRegistry {
-  fn new() -> Self {
-    TaskDataRegistry(BTreeMap::new())
-  }
-}
-
-pub fn init() {
-  crate::kinfo_mut().init_task_env();
-}
-
-use alloc::collections::BTreeSet;
-#[derive(Clone, Debug)]
-pub struct MaskList(BTreeSet<String>);
-
-impl MaskList {
-  fn new() -> Self {
-    MaskList(BTreeSet::new())
-  }
-  fn contains<W>(&self, s: W) -> bool where W: Into<String> {
-    self.0.contains(&s.into())
-  }
-  fn add<W>(&mut self, s: W) -> bool where W: Into<String> {
-    self.0.insert(s.into())
-  }
-  fn del<W>(&mut self, s: W) -> bool where W: Into<String> {
-    self.0.remove(&s.into())
-  }
-}
-
+// BOS only provides a base set of symbols, to extend this
+// list of syscalls, another process must wrap this syscall
 pub extern fn symrf(sym_type: u16, sym_name: &str) -> *mut u8 {
   let st = SymbolType::from(sym_type);
   drop(sym_type);
@@ -125,7 +22,6 @@ pub extern fn symrf(sym_type: u16, sym_name: &str) -> *mut u8 {
           42 as *mut u8
         }
         SymbolType::IPC => {
-          //TODO: try to resolve symbol otherwise first
           match sym_name {
             "bos_set_sig_handler" => kcalls::bos_set_sig_handler as *mut u8,
             "bos_sig_handle" => kcalls::bos_sig_handle as *mut u8,

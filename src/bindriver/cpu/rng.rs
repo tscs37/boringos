@@ -5,7 +5,7 @@ use spin::Mutex;
 
 lazy_static! {
   //TODO: per CPU
-  static ref rng: Mutex<ChaChaRng> = Mutex::new(ChaChaRng::seed_from_u64(134_304_831));
+  static ref RNG: Mutex<ChaChaRng> = Mutex::new(ChaChaRng::seed_from_u64(134_304_831));
 }
 
 pub fn get_u128() -> u128 {
@@ -19,8 +19,8 @@ pub fn get_u128() -> u128 {
 pub fn get_u64() -> u64 {
   if !crate::bindriver::cpu::has_rdrand() {
     // i just use mutex so it works
-    unsafe{rng.force_unlock()};
-    rng.lock().next_u64()
+    unsafe{RNG.force_unlock()};
+    RNG.lock().next_u64()
   } else {
     let rnd: u64;
     let retry: u32;

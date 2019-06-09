@@ -184,16 +184,19 @@ impl PagePool for PageMapWrapper {
     match self.next {
       Some(mut next) => next.add_memory(pa, sz),
       None => {
+        trace!("adding {}+{} to page pool", pa, sz);
         use core::alloc::{Layout, Alloc};
         use alloc::alloc::Global;
         use core::cmp::min;
 
         // Allocate the pagemap in memory
+        trace!("allocating pagemap in memory");
         let layout = Layout::new::<PageMap>();
         assert!(layout.align() == PAGE_SIZE, "pages must be aligned to pagesize");
-        let ptr: *mut PageMap = unsafe{Global{}.alloc_zeroed(layout)?}.cast().as_ptr();
+        let ptr: *mut PageMap = unsafe{Global{}.alloc_zeroed(layout).expect("require free memory to allocate new memory")}.cast().as_ptr();
 
         // Calculate maximum of pages we can put into the new map
+        trace!("adjust page allocation bitmap");
         let sza = min(sz, core::u16::MAX as usize) as u16;
 
         // Create the new pagemap from memory
@@ -203,10 +206,12 @@ impl PagePool for PageMapWrapper {
 
         // Wrap the resulting pagemap
         let mut pm = PageMapWrapper(NonNull::new(ptr)?);
+        trace!("PMW : {}", pm);
 
         // Update linked list
         self.next = Some(pm);
         if sz > sza {
+          debug!("adding memory section to memory pool");
           Ok(pm.add_memory(pa + sza, sz - sza)?)
         } else {
           Ok(())

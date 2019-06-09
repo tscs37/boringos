@@ -26,8 +26,6 @@ pub struct State {
   signalrecv: usize, // Handle for Task Signals
   //TODO: make atomic
   killh: usize, // Run this handler when we kill the task
-  //TODO: use rw locked task_env
-  task_env: Option<Arc<crate::process_environment::TaskEnvironment>>, // If None, the task uses the parent's env, otherwise this one contains overwrites
 }
 
 fn null_fn() {
@@ -163,7 +161,6 @@ impl State {
           rbp: crate::vmem::STACK_START,
           signalrecv: 0,
           killh: 0,
-          task_env: None,
           page_limit: DEFAULT_PAGE_LIMIT,
         };
         Ok(s)
@@ -184,7 +181,6 @@ impl State {
       rbp: crate::vmem::STACK_START,
       signalrecv: 0,
       killh: 0,
-      task_env: None,
       page_limit: DEFAULT_PAGE_LIMIT,
     }
   }
@@ -216,7 +212,6 @@ impl State {
       page_limit: self.page_limit,
       signalrecv: self.signalrecv,
       killh: self.killh,
-      task_env: self.task_env.clone(),
     }
   }
   pub fn map(&self) {

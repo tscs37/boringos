@@ -80,7 +80,6 @@ pub fn release_page(pa: PhysAddr) -> Result<(), PagePoolReleaseError>{
 pub extern "C" fn yield_to(t: u128) {
   let th = TaskHandle::from_c(t);
   debug!("Yielding to task {}", th);
-  use crate::process_manager::TaskHandle;
   let cur = userspace().in_scheduler_spin(|sched| sched.current_task());
   userspace().in_scheduler_mut_spin(|mut sched| sched.set_current_task(th));
   userspace().in_scheduler_spin(|sched| sched.yield_to(cur, Some(th)));

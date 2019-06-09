@@ -1,12 +1,10 @@
 use alloc::rc::Rc;
 use core::cell::RefCell;
-use alloc::sync::Arc;
 use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
 use crate::process_manager::{Memory, MemoryUser, MemoryUserRef, TaskHandle};
 use crate::vmem::PhysAddr;
 use spin::RwLock;
 use atomic::Atomic;
-use crate::process_environment::TaskEnvironment;
 
 pub struct KernelInfo {
   switching_tasks_int: AtomicBool,
@@ -16,7 +14,6 @@ pub struct KernelInfo {
   current_data_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
   current_stack_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
   zero_page_addr: AtomicU64,
-  root_task_env: Option<Arc<TaskEnvironment>>,
 }
 impl KernelInfo {
   const fn new() -> Self {
@@ -28,16 +25,6 @@ impl KernelInfo {
       current_data_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
       current_stack_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
       zero_page_addr: AtomicU64::new(0),
-      root_task_env: None,
-    }
-  }
-  pub fn init_task_env(&mut self) {
-    self.root_task_env = Some(Arc::new(TaskEnvironment::new()));
-  }
-  pub fn task_env(&self) -> Arc<TaskEnvironment> {
-    match &self.root_task_env {
-      Some(s) => s.clone(),
-      None => panic!("task env requested but was none")
     }
   }
   pub fn mapping_task_image(&mut self, v: Option<bool>) -> bool {

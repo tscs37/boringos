@@ -1,7 +1,6 @@
-pub mod pagelist_og;
+
 pub mod pagelist_ng;
 
-//pub use crate::vmem::pagelist::pagelist_og::*;
 pub use crate::vmem::pagelist::pagelist_ng::*;
 
 use core::ptr::NonNull;

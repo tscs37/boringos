@@ -4,12 +4,15 @@ version = "0.1.0"
 authors = ["Tim Schuster <mail@timschuster.info>"]
 edition = "2018"
 
+[build]
+target = "x86_64-boringoscore.json"
+
 [dependencies]
-bootloader = "0.3.11"
+bootloader = "0.5.1"
 volatile = "0.2.3"
 spin = "0.4.10"
 uart_16550 = "0.1.0"
-x86_64 = "0.3.4"
+x86_64 = "0.7.0"
 slabmalloc = "0.3.0"
 static_assertions = "0.2.5"
 bitflags = "1.0.4"
@@ -17,7 +20,7 @@ raw-cpuid = "6.0.0"
 pic8259_simple = "0.1.1"
 rand_chacha = "0.1.0"
 rand = { version = "0.6", default-features = false }
-atomic = {version = "0.4", features = ["nightly"]}
+atomic = {version = "0.4.5", features = ["nightly"]}
 
 [dependencies.goblin]
 version = "0.0.19"
@@ -39,3 +42,6 @@ memcpy = true
 
 [patch.crates-io]
 slabmalloc = { git = 'https://github.com/gz/rust-slabmalloc/' }
+
+[target.'cfg(target_os = "none")']
+runner = "bootimage runner"

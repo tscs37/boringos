@@ -1,5 +1,4 @@
 #![feature(abi_x86_interrupt)]
-#![feature(alloc)]
 #![feature(alloc_error_handler)]
 #![feature(allocator_api)]
 #![feature(lang_items)]
@@ -11,7 +10,7 @@
 #![feature(const_fn)]
 #![feature(exclusive_range_pattern)]
 #![feature(try_trait)]
-#![feature(try_from)]
+#![feature(alloc_prelude)]
 
 #![allow(unused_variables,dead_code)]
 
@@ -65,7 +64,7 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
   {
     vga_print!("Initializing VMEM...");
     debug!("Probing existing memory ...");
-    assert!(boot_info.p4_table_addr == crate::vmem::pagetable::P4 as u64);
+    //assert!(boot_info.p4_table_addr == crate::vmem::pagetable::P4 as u64);
     {
       debug!("Initializing VMEM Slab Allocator...");
       pager().init().expect("init on pager failed");
@@ -140,12 +139,6 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
         }
       });
     }
-    vga_print_green!("[ OK ]\n");
-  }
-  {
-    vga_print!("Initializing Process Environment...");
-    // penv is largely self-initializing at this point
-    crate::process_environment::init();
     vga_print_green!("[ OK ]\n");
   }
 
