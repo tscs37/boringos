@@ -6,10 +6,10 @@
 #[macro_use]
 extern crate symrfp;
 
-extern crate ralloc;
+use linked_list_allocator::LockedHeap;
 
 #[global_allocator]
-static ALLOCATOR: ralloc::Allocator = ralloc::Allocator{};
+static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 extern crate alloc;
 

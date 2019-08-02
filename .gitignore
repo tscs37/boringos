@@ -1,4 +1,4 @@
-
+/bos_emulator
 /target/
 **/*.rs.bk
 /initramfs.bin

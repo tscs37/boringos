@@ -1,11 +1,11 @@
-use rand_chacha::ChaChaRng;
-use rand::RngCore;
-use rand::SeedableRng;
+use rand_chacha::ChaCha12Rng;
+use rand_core::RngCore;
+use rand_core::SeedableRng;
 use spin::Mutex;
 
 lazy_static! {
   //TODO: per CPU
-  static ref RNG: Mutex<ChaChaRng> = Mutex::new(ChaChaRng::seed_from_u64(134_304_831));
+  static ref RNG: Mutex<ChaCha12Rng> = Mutex::new(ChaCha12Rng::seed_from_u64(134_304_831));
 }
 
 pub fn get_u128() -> u128 {

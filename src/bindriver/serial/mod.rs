@@ -6,7 +6,7 @@ pub type SafeSerialPort = Mutex<SerialPort>;
 
 lazy_static! {
     pub static ref SERIAL1: SafeSerialPort = {
-        let mut serial_port = SerialPort::new(0x3F8);
+        let mut serial_port = unsafe { SerialPort::new(0x3F8) };
         serial_port.init();
         Mutex::new(serial_port)
     };
@@ -23,10 +23,10 @@ impl ::log::Log for SERIAL1 {
         (metadata.level() <= Level::Trace && !(false
             // put in blacklisted debug modules here
             // modules listed here are only logged for Info Level or higher
-            || metadata.target() == "slabmalloc"
+            //|| metadata.target() == "slabmalloc"
             //|| metadata.target() == "boringos::vmem::pagelist"
             //|| metadata.target() == "boringos::vmem::pagetable"
-            || metadata.target() == "boringos::bindriver::cpu::idt"
+            //|| metadata.target() == "boringos::bindriver::cpu::idt"
             //|| metadata.target() == "boringos::vmem::mapper"
             //|| metadata.target() == "boringos::vmem::pagelist::pagelist_ng"
             //|| metadata.target() == "boringos::common::kinfo"

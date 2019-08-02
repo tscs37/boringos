@@ -26,8 +26,6 @@ extern crate lazy_static;
 #[macro_use]
 extern crate static_assertions;
 #[macro_use]
-extern crate bitflags;
-#[macro_use]
 extern crate log;
 #[macro_use]
 extern crate alloc;
@@ -46,28 +44,28 @@ use self::alloc::sync::Arc;
 use self::process_manager::Userspace;
 use self::vmem::PageManager;
 use core::cell::RefCell;
-use slabmalloc::SafeZoneAllocator;
-use spin::Mutex;
+use linked_list_allocator::LockedHeap;
 
 pub use crate::common::*;
 
-pub static PAGER: Mutex<PageManager> = Mutex::new(PageManager::new());
+pub static PAGER: KPut<PageManager> = KPut::new(PageManager::new());
 #[global_allocator]
-static MEM_PROVIDER: SafeZoneAllocator = SafeZoneAllocator::new(&PAGER);
+static ALLOCATOR: LockedHeap = LockedHeap::empty();
 static mut USERSPACE: Option<Arc<RefCell<Userspace>>> = None;
 
-#[no_mangle]
-pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> ! {
+bootloader::entry_point!(kernel_main);
+
+fn kernel_main(boot_info: &'static bootloader::BootInfo) -> ! {
   // init drivers for core hardware
   bindriver::init();
   vga_println!("BoringOS v{}\n", version::VERSION);
   {
     vga_print!("Initializing VMEM...");
+    debug!("initializing page mapper with phys mem offset");
     debug!("Probing existing memory ...");
-    //assert!(boot_info.p4_table_addr == crate::vmem::pagetable::P4 as u64);
     {
       debug!("Initializing VMEM Slab Allocator...");
-      pager().init().expect("init on pager failed");
+      pager().init(boot_info.physical_memory_offset).expect("init on pager failed");
       let mmap = &boot_info.memory_map;
       let mut usable_memory = 0;
       use core::ops::Deref;
@@ -94,7 +92,7 @@ pub extern "C" fn _start(boot_info: &'static bootloader::bootinfo::BootInfo) -> 
             );
             usable_memory += size;
             unsafe { match pager().add_memory(
-              crate::vmem::pagelist::PhysAddr::new_unchecked(range.start_addr()),
+              PhysAddr::new(range.start_addr()),
                 (size / 4096) as usize - 1,) 
               {
                 Ok(_) => {},

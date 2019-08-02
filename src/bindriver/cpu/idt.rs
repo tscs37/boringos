@@ -1,7 +1,8 @@
 use crate::bindriver::cpu::pic::PIC_1_OFFSET;
 use x86_64::structures::idt::*;
+use x86_64::VirtAddr;
 pub const TIMER_INTERRUPT_ID: u8 = PIC_1_OFFSET;
-use crate::vmem::pagelist::PhysAddr;
+use crate::*;
 
 fn crack_locks() {
     unsafe { crate::bindriver::serial::SERIAL1.force_unlock() }
@@ -112,16 +113,7 @@ extern "x86-interrupt" fn page_fault(
     stack_frame: &mut InterruptStackFrame,
     error_code: u64,
 ) {
-    // LLVM fucks up the stack alignment, so we unfuck it and force the value through a sensible place
-    {
-        unsafe{asm!("sub rsp, 8
-        sub rbp, 8"::::"intel", "volatile")};
-    }
     let error_code = error_code.clone();
-    {
-        unsafe{asm!("add rsp, 8
-        add rbp, 8"::::"intel", "volatile")};
-    }
     let error_code = PageFaultErrorCode::from_bits(error_code)
         .expect(&format!("error_code has reserved bits set: {:#018x}", error_code))
         .clone();
@@ -132,21 +124,14 @@ extern "x86-interrupt" fn page_fault(
         mov rax, cr2
         ":"={rax}"(addr)::"rax", "memory":"intel", "volatile")
     };
-    debug!("cr2 register says it was {:#018x}", addr);
+    debug!("fault addr: {:#018x}", addr);
+    debug!("instr addr: {:#018x}", stack_frame.instruction_pointer.as_u64());
 
-    if addr >= crate::vmem::PAGE_TABLE_LO || addr <= crate::vmem::KERNEL_START {
-        panic!(
-            "critical page fault in page table area or zero memory: {:#018x}",
-            addr
-        );
-    }
-    let paddr = PhysAddr::new_usize(addr);
-    match paddr {
-        Some(addr) => match crate::vmem::faulth::handle(addr, error_code) {
-            Ok(res) => debug!("Handler returned Ok: {:?}", res),
-            Err(res) => panic!("Handler returned Error: {:?}", res)
-        },
-        None => panic!("PageFault on invalid address {:#018x}", addr),
+    assert!(addr >= crate::vmem::KERNEL_START, "valid memory must be above {:#018x}", crate::vmem::KERNEL_START);
+    let vaddr = VirtAddr::new(addr.try_into().unwrap());
+    match crate::vmem::faulth::handle(vaddr, error_code) {
+        Ok(res) => debug!("Handler returned Ok: {:?}", res),
+        Err(res) => panic!("Handler returned Error: {:?}", res)
     }
     
 }

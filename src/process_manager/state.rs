@@ -1,7 +1,8 @@
 use core::cell::RefCell;
-use crate::vmem::PhysAddr;
+use crate::PhysAddr;
 use crate::process_manager::TaskHandle;
 use crate::process_manager::memory::Memory;
+use x86_64::VirtAddr;
 
 const DEFAULT_PAGE_LIMIT: usize = 1024;
 
@@ -104,7 +105,7 @@ impl State {
                 let size = (vmr.start - cur_real_base) / crate::vmem::PAGE_SIZE;
                 assert!(size < core::u16::MAX as usize, "size was {}, bigger than {}", size, core::u16::MAX);
                 trace!("pretouching memory to zero page for program");
-                crate::vmem::mapper::map_zero(PhysAddr::new_usize_or_abort(cur_real_base), size as u16);
+                crate::vmem::mapper::map_zero(VirtAddr::new(cur_real_base as u64), size as u16);
                 if is_code_section {
                   trace!("setting code memory offset");
                   code_memory.set_zero_page_offset(size as u16);
@@ -140,7 +141,7 @@ impl State {
           } else if ph.p_type == goblin::elf::program_header::PT_GNU_STACK {
             debug!("GNU_STACK, ignoring");
           } else {
-            panic!("Unknown ELF section: {:?}", ph);
+            panic!("Unknown ELF section: {:?}, not loading", ph);
           }
         }
         code_memory.unmap();
@@ -153,7 +154,7 @@ impl State {
         let s = State {
           active: false,
           mode: CPUMode::Kernel,
-          start_rip: PhysAddr::new_or_abort(binary.entry),
+          start_rip: PhysAddr::new(binary.entry),
           stack: Memory::new_stack(),
           memory: data_memory,
           code: code_memory,
@@ -173,7 +174,7 @@ impl State {
     State {
       active: false,
       mode: CPUMode::Kernel,
-      start_rip: PhysAddr::new(null_fn as u64).expect("null_fn must resolve"),
+      start_rip: PhysAddr::try_new(null_fn as u64).expect("null_fn must resolve"),
       stack: Memory::new_nomemory(),
       memory: Memory::new_nomemory(),
       code: Memory::new_nomemory(),

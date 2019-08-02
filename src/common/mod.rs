@@ -1,14 +1,23 @@
 use crate::process_manager::{Userspace, Task, TaskHandle};
 use crate::vmem::PageManager;
 use core::cell::{Ref, RefMut};
-use crate::vmem::PhysAddr;
 use crate::vmem::pagelist::{PagePoolAllocationError, PagePoolReleaseError};
 
 #[macro_use]
 mod macros;
 mod kinfo;
+mod katomic;
+mod kput;
+
+pub use katomic::*;
 
 pub use crate::common::kinfo::*;
+
+pub use x86_64::{PhysAddr, VirtAddr};
+
+pub use core::convert::TryInto;
+
+pub use kput::*;
 
 #[allow(dead_code)]
 
@@ -19,12 +28,12 @@ pub fn userspace<'a>() -> Ref<'a, Userspace> {
   }
 }
 
-pub fn kinfo<'a>() -> spin::RwLockReadGuard<'a, KernelInfo> {
+pub fn kinfo<'a>() -> &'a KernelInfo {
   KERNEL_INFO.read()
 }
 
-pub fn kinfo_mut<'a>() -> spin::RwLockWriteGuard<'a, KernelInfo> {
-  KERNEL_INFO.write()
+pub fn kinfo_mut<'a>() -> KPutGuard<'a, KernelInfo> {
+  KERNEL_INFO.try_write().expect("no lock on KINFO")
 }
 
 pub fn with_current_task<T>(run: impl Fn(Option<Ref<Task>>) -> T) -> Result<T, ()> {
@@ -63,8 +72,8 @@ pub fn current_taskhandle() -> Result<TaskHandle, ()> {
   })
 }
 
-pub fn pager<'a>() -> ::spin::MutexGuard<'a, PageManager> {
-  crate::PAGER.lock()
+pub fn pager<'a>() -> KPutGuard<'a, PageManager<'static>> {
+  crate::PAGER.try_write().expect("locking page manager failed")
 }
 
 pub fn alloc_page() -> Result<PhysAddr, PagePoolAllocationError> {

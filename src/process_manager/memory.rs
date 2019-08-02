@@ -3,7 +3,8 @@ use alloc::rc::Rc;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 use crate::vmem::mapper::{map, map_zero, unmap, MapType};
-use crate::vmem::PhysAddr;
+use crate::{PhysAddr, VirtAddr};
+use core::convert::TryInto;
 
 #[derive(Clone, Copy)]
 pub struct MemoryUserRef {
@@ -141,19 +142,19 @@ impl Memory {
     match self {
       Memory::NoMemory => (),
       Memory::User(s) => (*s).borrow().map(
-        PhysAddr::new_usize_or_abort(crate::vmem::DATA_START),
+        VirtAddr::new(crate::vmem::DATA_START.try_into().unwrap()),
         MapType::Data,
       ),
       Memory::Code(s) => (*s).borrow().map(
-        PhysAddr::new_usize_or_abort(crate::vmem::CODE_START),
+        VirtAddr::new(crate::vmem::CODE_START.try_into().unwrap()),
         MapType::Code,
       ),
       Memory::Stack(s) => (*s).borrow().map(
-        PhysAddr::new_usize_or_abort(crate::vmem::STACK_START),
+        VirtAddr::new(crate::vmem::STACK_START.try_into().unwrap()),
         MapType::Stack,
       ),
       Memory::KernelStack(s) => (*s).borrow().map(
-        PhysAddr::new_usize_or_abort(crate::vmem::KSTACK_START),
+        VirtAddr::new(crate::vmem::KSTACK_START.try_into().unwrap()),
         MapType::Stack,
       ),
     }
@@ -163,19 +164,19 @@ impl Memory {
     match self {
       Memory::NoMemory => (),
       Memory::User(s) => (*s).borrow().map(
-        PhysAddr::new_usize_or_abort(crate::vmem::DATA_START),
+        VirtAddr::new(crate::vmem::DATA_START.try_into().unwrap()),
         MapType::Data,
       ),
       Memory::Code(s) => (*s).borrow().map(
-        PhysAddr::new_usize_or_abort(crate::vmem::CODE_START),
+        VirtAddr::new(crate::vmem::CODE_START.try_into().unwrap()),
         MapType::Data,
       ),
       Memory::Stack(s) => (*s).borrow().map(
-        PhysAddr::new_usize_or_abort(crate::vmem::STACK_START),
+        VirtAddr::new(crate::vmem::STACK_START.try_into().unwrap()),
         MapType::Stack,
       ),
       Memory::KernelStack(s) => (*s).borrow().map(
-        PhysAddr::new_usize_or_abort(crate::vmem::KSTACK_START),
+        VirtAddr::new(crate::vmem::KSTACK_START.try_into().unwrap()),
         MapType::Stack,
       ),
     }
@@ -184,19 +185,19 @@ impl Memory {
     match self {
       Memory::NoMemory => (),
       Memory::User(s) => (*s).borrow().unmap(
-        PhysAddr::new_usize_or_abort(crate::vmem::DATA_START),
+        VirtAddr::new(crate::vmem::DATA_START.try_into().unwrap()),
         MapType::Data,
       ),
       Memory::Code(s) => (*s).borrow().unmap(
-        PhysAddr::new_usize_or_abort(crate::vmem::CODE_START),
+        VirtAddr::new(crate::vmem::CODE_START.try_into().unwrap()),
         MapType::Code,
       ),
       Memory::Stack(s) => (*s).borrow().unmap(
-        PhysAddr::new_usize_or_abort(crate::vmem::STACK_START),
+        VirtAddr::new(crate::vmem::STACK_START.try_into().unwrap()),
         MapType::Stack,
       ),
       Memory::KernelStack(s) => (*s).borrow().unmap(
-        PhysAddr::new_usize_or_abort(crate::vmem::KSTACK_START),
+        VirtAddr::new(crate::vmem::KSTACK_START.try_into().unwrap()),
         MapType::Stack,
       ),
     }
@@ -261,7 +262,7 @@ impl MemoryUser {
   fn new_empty() -> MemoryUserRef {
     MemoryUserRef::new_empty()
   }
-  fn map(&self, base: PhysAddr, t: MapType) {
+  fn map(&self, base: VirtAddr, t: MapType) {
     if self.pages.len() == 0 {
       return;
     }
@@ -269,15 +270,15 @@ impl MemoryUser {
       trace!("pre-mapping zero pages");
       map_zero(base, self.zero_page_offset);
     }
-    trace!("mapping user memory to {} ({:?})", base, t);
-    let adj_base = base.as_usize() + (self.zero_page_offset as usize) * crate::vmem::PAGE_SIZE;
+    trace!("mapping user memory to {:?} ({:?})", base, t);
+    let adj_base = base + (self.zero_page_offset as usize) * crate::vmem::PAGE_SIZE;
     map(
-      PhysAddr::new_usize_or_abort(adj_base),
+      adj_base,
       self.pages.clone(),
       t,
     );
   }
-  fn unmap(&self, base: PhysAddr, t: MapType) {
+  fn unmap(&self, base: VirtAddr, t: MapType) {
     if self.pages.len() == 0 {
       return;
     }
@@ -285,9 +286,9 @@ impl MemoryUser {
       trace!("pre-unmapping zero pages");
       unmap(base, self.zero_page_offset as usize, MapType::Zero);
     }
-    trace!("unmapping user memory at {} ({:?})", base, t);
-    let adj_base = base.as_usize() + (self.zero_page_offset as usize) * crate::vmem::PAGE_SIZE;
-    unmap(PhysAddr::new_usize_or_abort(adj_base), self.pages.len(), t);
+    trace!("unmapping user memory at {:?} ({:?})", base, t);
+    let adj_base = base + (self.zero_page_offset as usize) * crate::vmem::PAGE_SIZE;
+    unmap(adj_base, self.pages.len(), t);
   }
   fn page_count(&self) -> usize {
     self.pages.len() + self.zero_page_offset as usize
@@ -303,14 +304,14 @@ impl MemoryKernel {
   fn new() -> MemoryKernelRef {
     MemoryKernelRef::new()
   }
-  fn map(&self, base: PhysAddr, t: MapType) {
+  fn map(&self, base: VirtAddr, t: MapType) {
     if self.pages.len() == 0 {
       return;
     }
-    info!("mapping Kernel Memory to {}", base);
+    info!("mapping Kernel Memory to {:?}", base);
     map(base, self.pages.clone(), t);
   }
-  fn unmap(&self, _base: PhysAddr, _t: MapType) {
+  fn unmap(&self, _base: VirtAddr, _t: MapType) {
     panic!("kernel memory cannot be unmapped")
   }
   fn page_count(&self) -> usize {

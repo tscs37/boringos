@@ -6,7 +6,7 @@ CRATE = boringos
 QEMU_MEMORY = 512
 QEMU_PLATFORM = system-x86_64
 KERNEL_BUILD_MODE = debug
-RUST_VERSION = nightly-2019-01-10
+RUST_VERSION = nightly-2019-07-19
 BOOTIMG_FILE = target/$(KERNEL_TARGET)/$(KERNEL_BUILD_MODE)/bootimage-$(CRATE).bin
 BIN_FILE = target/$(KERNEL_TARGET)/debug/$(CRATE)
 QEMU_OPTIONS = -net none -m $(QEMU_MEMORY) \
@@ -26,8 +26,9 @@ rustup: .rustup
 	@rustup override add $(RUST_VERSION)
 	@rustup component add rust-src
 	@rustup component add rls-preview rust-analysis
+	@rustup component add llvm-tools-preview
 	@cargo install cargo-xbuild --force
-	@cargo install bootimage --version "^0.5.0" --force
+	@cargo install bootimage --version "^0.7.0" --force
 
 ln_targets: pid0/$(BIN_TARGET).json
 
@@ -48,11 +49,10 @@ clean_pid0:
 bootimage: initramdata/pid0 initramdata/initramfs.bin kernel
 
 kernel:
-	@echo "Building Kernel image"
 ifeq ($(KERNEL_BUILD_MODE),debug)
-	@bootimage build --target $(KERNEL_TARGET).json
+	@cargo bootimage --target $(KERNEL_TARGET).json
 else
-	@bootimage build --$(KERNEL_BUILD_MODE) --target $(KERNEL_TARGET).json
+	@cargo bootimage --$(KERNEL_BUILD_MODE) --target $(KERNEL_TARGET).json
 endif
 
 initramdata/pid0: ln_targets pid0_build

@@ -1,10 +1,12 @@
 use alloc::rc::Rc;
 use core::cell::RefCell;
-use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use crate::process_manager::{Memory, MemoryUser, MemoryUserRef, TaskHandle};
-use crate::vmem::PhysAddr;
-use spin::RwLock;
+use crate::PhysAddr;
 use atomic::Atomic;
+use crate::common::*;
+use core::ptr::NonNull;
+use core::sync::atomic::AtomicU64;
 
 pub struct KernelInfo {
   switching_tasks_int: AtomicBool,
@@ -13,7 +15,8 @@ pub struct KernelInfo {
   current_code_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
   current_data_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
   current_stack_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
-  zero_page_addr: AtomicU64,
+  zero_page_addr: OptAPtr,
+  vmem_boot_offset: AtomicU64,
 }
 impl KernelInfo {
   const fn new() -> Self {
@@ -24,8 +27,16 @@ impl KernelInfo {
       current_code_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
       current_data_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
       current_stack_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
-      zero_page_addr: AtomicU64::new(0),
+      zero_page_addr: OptAPtr::zero(),
+      vmem_boot_offset: AtomicU64::new(0),
     }
+  }
+  pub fn set_vmem_boot_offset(&mut self, off: u64) {
+    self.vmem_boot_offset.store(off, Ordering::Relaxed);
+    debug!("vmem boot offset now {:#018x}", off);
+  }
+  pub fn get_vmem_boot_offset(&self) -> u64 {
+    self.vmem_boot_offset.load(Ordering::Relaxed)
   }
   pub fn mapping_task_image(&mut self, v: Option<bool>) -> bool {
     if v.is_none() {
@@ -38,24 +49,14 @@ impl KernelInfo {
     }
   }
   pub fn get_zero_page_addr(&self) -> PhysAddr {
-    let v = self.zero_page_addr.load(Ordering::SeqCst);
-    if v == 0 {
+    let v = self.zero_page_addr.get();
+    if v.is_none() {
       info!("kernel has no zero page, allocating one");
-      let page = crate::alloc_page().expect("must have zero page in kernel");
-      let v = self.zero_page_addr.compare_and_swap(0, page.as_u64(), Ordering::SeqCst);
-      if v != page.as_u64() && v != 0 {
-        use crate::vmem::pagelist::PagePoolReleaseError;
-        match crate::release_page(page) {
-          Ok(_) => {},
-          Err(pre) => match pre {
-            PagePoolReleaseError::PageUntracked => warn!("released untracked page {}", page),
-            _ => panic!("error when releasing page: {:?}", pre)
-          }
-        }
-      }
+      let page = alloc_page().expect("must have zero page in kernel");
+      self.zero_page_addr.set(NonNull::new(page.as_u64() as *mut u8).unwrap());
       page
     } else {
-      PhysAddr::new_or_abort(v)
+      PhysAddr::new(v.unwrap().as_ptr() as u64)
     }
   }
   pub fn get_switching_tasks(&self) -> bool {
@@ -73,19 +74,19 @@ impl KernelInfo {
       compare_exchange(c, v, Ordering::SeqCst, Ordering::SeqCst)
   }
   pub fn add_code_page(&self, p: PhysAddr) {
-    trace!("adding {} to active code memory", p);
+    trace!("adding {:?} to active code memory", p);
     let ptr = self.current_code_memory_ref_int.load(Ordering::SeqCst);
     let mur = MemoryUserRef::from(ptr);
     self.add_page_to_mur(p, mur)
   }
   pub fn add_data_page(&self, p: PhysAddr) {
-    trace!("adding {} to active data memory", p);
+    trace!("adding {:?} to active data memory", p);
     let ptr = self.current_data_memory_ref_int.load(Ordering::SeqCst);
     let mur = MemoryUserRef::from(ptr);
     self.add_page_to_mur(p, mur)
   }
   pub fn add_stack_page(&self, p: PhysAddr) {
-    trace!("adding {} to active stack memory", p);
+    trace!("adding {:?} to active stack memory", p);
     let ptr = self.current_stack_memory_ref_int.load(Ordering::SeqCst);
     let mur = MemoryUserRef::from(ptr);
     self.add_page_to_mur(p, mur)
@@ -130,4 +131,4 @@ impl KernelInfo {
     }
   }
 }
-pub static KERNEL_INFO: RwLock<KernelInfo> = RwLock::new(KernelInfo::new());
+pub static KERNEL_INFO: KPut<KernelInfo> = KPut::new(KernelInfo::new());

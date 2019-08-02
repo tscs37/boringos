@@ -3,17 +3,11 @@ pub mod pagelist_ng;
 
 pub use crate::vmem::pagelist::pagelist_ng::*;
 
-use core::ptr::NonNull;
-use core::cmp::Ordering;
 use core::alloc::AllocErr;
-
-// we ignore address 0
-#[derive(Clone,Copy)]
-pub struct PhysAddr(NonNull<u8>);
+use x86_64::PhysAddr;
+use core::option::NoneError;
 
 pub type RelativeFrame = usize;
-
-assert_eq_size!(check_phys_addr_size; PhysAddr,    u64);
 
 #[derive(Debug, Clone)]
 pub enum PagePoolAllocationError {
@@ -39,14 +33,13 @@ pub enum PagePoolAppendError {
   AllocError(AllocErr),
 }
 
-impl From<NoneError> for PagePoolAppendError {
-  fn from(e: NoneError) -> Self { PagePoolAppendError::NoneError(e) }
-}
-
 impl From<AllocErr> for PagePoolAppendError {
   fn from(e: AllocErr) -> Self { PagePoolAppendError::AllocError(e) }
 }
 
+impl From<NoneError> for PagePoolAppendError {
+  fn from(e: NoneError) -> Self { PagePoolAppendError::NoneError(e) }
+}
 
 /// This trait contains all necessary functions the kernel operates on 
 /// The following properties must be satified by the page pool mechanism:
@@ -83,122 +76,22 @@ pub trait PagePool {
   fn add_memory(&mut self, pa: PhysAddr, sz: usize) -> Result<(), PagePoolAppendError>;
 }
 
-impl ::core::fmt::Display for PhysAddr {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-    f.write_fmt(format_args!("0x{:016X}", self.as_u64()))
-  }
-}
+use x86_64::structures::paging::{PhysFrame, FrameAllocator, FrameDeallocator};
+use x86_64::structures::paging::PageSize;
 
-impl ::core::fmt::Debug for PhysAddr {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-    f.write_fmt(format_args!("0x{:016X}", self.as_u64()))
-  }
-}
-
-impl ::core::ops::Add<usize> for PhysAddr {
-  type Output = PhysAddr;
-
-  fn add(self, rhs: usize) -> PhysAddr {
-    let lhs = self.as_usize();
-    PhysAddr::new_usize_or_abort(lhs.saturating_add(rhs))
-  }
-}
-
-use core::convert::TryFrom;
-use core::option::NoneError;
-
-impl TryFrom<*mut u8> for PhysAddr {
-  type Error = NoneError;
-
-  fn try_from(f: *mut u8) -> Result<PhysAddr, NoneError> {
-    Ok(PhysAddr::new(f as u64)?)
-  }
-}
-
-impl<W> Into<NonNull<W>> for PhysAddr {
-  fn into(self) -> NonNull<W> {
-    self.0.cast()
-  }
-}
-
-// subtracting from a physaddr with a physaddr results in a relative frame
-impl ::core::ops::Sub<PhysAddr> for PhysAddr {
-  type Output = RelativeFrame;
-
-  fn sub(self, rhs: PhysAddr) -> RelativeFrame {
-    (self.as_usize() - rhs.as_usize()) / crate::vmem::PAGE_SIZE
-  }
-}
-
-impl ::core::cmp::PartialEq for PhysAddr {
-  fn eq(&self, rhs: &PhysAddr) -> bool {
-    self.as_u64() == rhs.as_u64()
-  }
-}
-
-impl ::core::cmp::PartialOrd for PhysAddr {
-  fn partial_cmp(&self, rhs: &PhysAddr) -> Option<Ordering> {
-    self.as_u64().partial_cmp(&rhs.as_u64())
-  }
-}
-
-use crate::vmem::pagetable::Page;
-
-impl PhysAddr {
-  pub fn new(p: u64) -> Option<PhysAddr> {
-    assert!(p < 0x0000_8000_0000_0000 ||
-      p >= 0xffff_8000_0000_0000,
-      "invalid address: {:#018x}", p);
-    Some(PhysAddr(NonNull::new(p as *mut u8)?))
-  }
-  pub fn new_usize(p: usize) -> Option<PhysAddr> {
-    PhysAddr::new(p as u64)
-  }
-  pub fn from(nn: NonNull<u8>) -> PhysAddr {
-    assert!((nn.as_ptr() as usize) < 0x0000_8000_0000_0000 ||
-      (nn.as_ptr() as usize) >= 0xffff_8000_0000_0000,
-      "invalid address: {:#018x}", (nn.as_ptr() as usize));
-    PhysAddr(nn)
-  }
-  pub fn into<T>(self) -> NonNull<T> {
-    unsafe { NonNull::new_unchecked(self.0.as_ptr() as *mut T) }
-  }
-  pub unsafe fn new_unchecked(p: u64) -> PhysAddr {
-    assert!(p < 0x0000_8000_0000_0000 ||
-      p >= 0xffff_8000_0000_0000,
-      "invalid address: {:#018x}", p);
-    PhysAddr(NonNull::new_unchecked(p as *mut u8))
-  }
-  pub fn new_or_abort(p: u64) -> PhysAddr {
-    match PhysAddr::new(p) {
-      None => panic!("could not create physaddr for {:#018x}, probably was null or illegal", p),
-      Some(pa) => pa
+unsafe impl<T> FrameAllocator<T> for dyn PagePool where T: PageSize {
+  fn allocate_frame(&mut self) -> Option<PhysFrame<T>> {
+    debug!("frame allocation request");
+    let alloc = self.allocate();
+    match alloc {
+      Err(v) => { debug!("could not allocate frame: {:?}", v); None },
+      Ok(alloc) => { debug!("allocated frame {:#018x}", alloc); Some(PhysFrame::containing_address(alloc)) }
     }
   }
-  pub fn new_usize_or_abort(p: usize) -> PhysAddr {
-    PhysAddr::new_or_abort(p as u64)
-  }
-  // Adds the specified number of pages as offset and returns the result as PhysAddr
-  pub unsafe fn add_pages(&self, pages: u64) -> PhysAddr {
-    PhysAddr(NonNull::new_unchecked(
-      (self.as_u64() + (pages * crate::vmem::PAGE_SIZE as u64)) as *mut u8))
-  }
-  pub fn as_u64(&self) -> u64 {
-    self.as_mut8() as u64
-  }
-  pub fn as_usize(&self) -> usize {
-    self.as_u64() as usize
-  }
-  pub fn as_mut8(&self) -> *mut u8 {
-    self.0.as_ptr()
-  }
-  pub fn as_ptr<T>(&self) -> *mut T {
-    self.0.as_ptr() as *mut T
-  }
-  pub fn as_physaddr(&self) -> ::x86_64::PhysAddr {
-    ::x86_64::PhysAddr::new(self.0.as_ptr() as u64)
-  }
-  pub fn into_page(&self) -> Page {
-    Page::containing_address(self.as_usize())
+}
+
+impl<T> FrameDeallocator<T> for dyn PagePool where T: PageSize {
+  fn deallocate_frame(&mut self, frame: PhysFrame<T>) {
+    self.release(frame.start_address()).unwrap()
   }
 }
