@@ -30,7 +30,7 @@ pub fn get_pagemap<T, F>(run: F) -> Option<T> where F: for<'a> Fn(&'a Mapper) ->
   kinfo().get_page_table(run)
 }
 
-pub fn get_pagemap_mut<T, F>(run: F) -> Option<T> where F: for<'a> Fn(&'a mut Mapper) -> T {
+pub fn get_pagemap_mut<T, F>(run: F) -> Option<T> where F: for<'a> FnMut(&'a mut Mapper) -> T {
   kinfo().get_page_table_mut(run)
 }
 

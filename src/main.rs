@@ -62,6 +62,13 @@ fn kernel_main(boot_info: &'static bootloader::BootInfo) -> ! {
     {
       debug!("Initializing VMEM Slab Allocator...");
       pager().init(VirtAddr::new(boot_info.physical_memory_offset)).expect("init on pager failed");
+      {
+        let start = vmem::KHEAP_START;
+        let size = vmem::KHEAP_END - vmem:: KHEAP_START;
+        debug!("initializing allocator from {:#018x} with {} pages", start, size / 4096);
+        unsafe { ALLOCATOR.init(start, size) };
+      }
+      debug!("loading memory map");
       let mmap = &boot_info.memory_map;
       let mut usable_memory = 0;
       use core::ops::Deref;

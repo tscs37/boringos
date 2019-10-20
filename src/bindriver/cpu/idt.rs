@@ -113,10 +113,9 @@ extern "x86-interrupt" fn page_fault(
     stack_frame: &mut InterruptStackFrame,
     error_code: u64,
 ) {
-    let error_code = error_code.clone();
+    debug!("page fault encountered");
     let error_code = PageFaultErrorCode::from_bits(error_code)
-        .expect(&format!("error_code has reserved bits set: {:#018x}", error_code))
-        .clone();
+        .expect("invalid PFEC");
     debug!("checking page fault error, code: {:08x}", error_code);
     let addr: usize;
     unsafe {

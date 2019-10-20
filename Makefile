@@ -1,4 +1,4 @@
-.PHONY: all clean kernel release rustup pid0_build
+.PHONY: all clean kernel release rustup pid0_build debug
 
 KERNEL_TARGET = x86_64-boringoscore
 BIN_TARGET = x86_64-boringosbase
@@ -9,6 +9,7 @@ KERNEL_BUILD_MODE = debug
 RUST_VERSION = nightly-2019-10-20
 BOOTIMAGE_VERSION = "0.7.7"
 BOOTIMG_FILE = target/$(KERNEL_TARGET)/$(KERNEL_BUILD_MODE)/bootimage-$(CRATE).bin
+KERNELIMG_FILE = target/$(KERNEL_TARGET)/$(KERNEL_BUILD_MODE)/boringos
 BIN_FILE = target/$(KERNEL_TARGET)/debug/$(CRATE)
 QEMU_OPTIONS = -net none -m $(QEMU_MEMORY) \
 	-vga cirrus -cpu EPYC \
@@ -67,5 +68,11 @@ initramdata/initramfs.bin:
 	@echo "Building InitRAMFS image"
 	@touch initramdata/initramfs.bin
 
+debug:
+	gdb $(KERNELIMG_FILE) -ex "target remote :1234"
+
 qemu: bootimage
 	@qemu-$(QEMU_PLATFORM) $(QEMU_OPTIONS) || exit 0
+
+qemu-debug: bootimage
+	@qemu-$(QEMU_PLATFORM) $(QEMU_OPTIONS) -s -S || exit 0

@@ -40,7 +40,7 @@ impl KernelInfo {
     let pt = self.page_table.read();
     pt.as_ref().map(|pt| run(pt))
   }
-  pub fn get_page_table_mut<T, F>(&self, run: F) -> Option<T> where F: for<'a> Fn(&'a mut Mapper) -> T {
+  pub fn get_page_table_mut<T, F>(&self, mut run: F) -> Option<T> where F: for<'a> FnMut(&'a mut Mapper) -> T {
     let mut pt = self.page_table.write();
     pt.as_mut().map(|pt| run(pt))
   }

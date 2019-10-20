@@ -48,6 +48,8 @@ pub fn handle(vaddr: VirtAddr, error_code: PageFaultErrorCode) -> PFHResult {
       && page.start_address() <= VirtAddr::new(crate::vmem::DATA_END.try_into().unwrap());
   let is_codepage = page.start_address() >= VirtAddr::new(crate::vmem::CODE_START.try_into().unwrap())
       && page.start_address() <= VirtAddr::new(crate::vmem::CODE_END.try_into().unwrap());
+  let is_kheap = page.start_address() >= VirtAddr::new(crate::vmem::KHEAP_START.try_into().unwrap())
+      && page.start_address() <= VirtAddr::new(crate::vmem::KHEAP_END.try_into().unwrap());
 
   let paddr = VirtAddr::try_new(page.start_address().as_u64());
   let paddr = match paddr {
@@ -65,6 +67,16 @@ pub fn handle(vaddr: VirtAddr, error_code: PageFaultErrorCode) -> PFHResult {
           //TODO: adjust kernel stack size
           debug!("mapped, returning...");
           return PFHOkResult::Mapped.into()
+      } else if is_kheap {
+        if caused_by_instr_fetch {
+          panic!("kernel attempted to run code from heap");
+        }
+        if vmem::mapper::is_mapped(paddr) {
+          panic!("fault on already mapped address");
+        }
+        debug!("mapping kheap page to {:?}", page.start_address());
+        map_new(paddr, MapType::Data);
+        return PFHOkResult::Mapped.into()
       } else if is_ustack {
           if caused_by_instr_fetch {
               //TODO: kill task instead

@@ -48,13 +48,11 @@ impl StaticPage {
 use self::pagelist::PagePool;
 use self::pagelist::pagelist_ng::{PageMap, PageMapWrapper};
 use self::pagelist::{PagePoolReleaseError, PagePoolAllocationError, PagePoolAppendError};
-use alloc::boxed::Box;
 
 #[repr(C)]
 #[repr(align(4096))]
 pub struct PageManager {
   pagepool: Option<PageMapWrapper>,
-  pagetable: Option<Box<crate::vmem::pagetable::Mapper>>,
 }
 
 // Memory allocated for bootstrapping
@@ -86,7 +84,7 @@ impl From<()> for InitError {
 }
 
 impl PageManager {
-  pub const fn new() -> PageManager { PageManager { pagepool: None, pagetable: None, } }
+  pub const fn new() -> PageManager { PageManager { pagepool: None, } }
 
   pub fn init(&mut self, physical_memory_offset: VirtAddr) -> Result<(), InitError> {
     trace!("allocating pagepool");
@@ -98,7 +96,7 @@ impl PageManager {
     trace!("pagepool allocated");
 
     unsafe {
-      use x86_64::structures::paging::{PhysFrame, PageTableFlags, Page, Size4KiB};
+      use x86_64::structures::paging::{PhysFrame, Page, Size4KiB};
       let start = KHEAP_START;
       let size = KHEAP_END - KHEAP_START;
       
@@ -110,31 +108,19 @@ impl PageManager {
           self.pagepool_mut().allocate().expect("require page for initial heap")
         );
         debug!("got page frame: {:#018x}", frame.start_address().as_u64());
-        let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
+        let flags = vmem::mapper::MapType::Data.flags();
         debug!("mapping with flags {:?}", flags);
         pagetable::get_pagemap_mut(|mapper| {
           use x86_64::structures::paging::mapper::Mapper;
           mapper.map_to(page, frame, flags, &mut self.pagepool.unwrap()).expect("failed to map").flush();
         });
       }
-      debug!("initializing allocator from {:#018x} with {} pages", start, size / 4096);
-      ALLOCATOR.init(start, size);
     }
-    
     trace!("init pagetable");
     unsafe{crate::vmem::pagetable::init(physical_memory_offset)};
     trace!("pagetable init ok");
     Ok(())
   }
-
-  pub fn set_pagetable(&mut self, m: vmem::pagetable::Mapper) {
-    self.pagetable = Some(Box::new(m));
-  }
-
-  pub fn get_pagetable(&mut self) -> &mut Box<vmem::pagetable::Mapper> {
-    self.pagetable.as_mut().expect("tried to read pagetable before pagetable init")
-  }
-
 
   fn pagepool(&self) -> &dyn PagePool {
     self.pagepool.as_ref().unwrap()

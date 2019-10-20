@@ -1,6 +1,6 @@
 
 use linked_list_allocator::Heap;
-use spin::{Mutex, MutexGuard};
+use spin::Mutex;
 use alloc::alloc::{Alloc, GlobalAlloc, AllocErr, Layout};
 use core::ops::Deref;
 use core::ptr::NonNull;
@@ -31,23 +31,13 @@ impl Deref for LockedHeap {
   type Target = Mutex<Heap>;
 
   fn deref(&self) -> &Mutex<Heap> {
-    trace!("deref on heap");
     &self.0
   }
 }
 
 impl LockedHeap {
   pub unsafe fn init(&self, start: usize, size: usize) {
-    trace!("doing deref for heap init");
-    let mutex: &Mutex<Heap> = &self.0;
-    trace!("locking heap for init");
-    let mut heap: MutexGuard<Heap> = mutex.lock();
-    mutex.force_unlock();
-    use core::ops::DerefMut;
-    let heap: &mut Heap = heap.deref_mut();
-    trace!("heap init running");
-    heap.init(start, size);
-    trace!("heap init complete");
+    self.lock().init(start, size);
   }
   pub const fn empty() -> LockedHeap {
     LockedHeap(Mutex::new(Heap::empty()))
