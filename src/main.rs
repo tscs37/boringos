@@ -10,7 +10,6 @@
 #![feature(const_fn)]
 #![feature(exclusive_range_pattern)]
 #![feature(try_trait)]
-#![feature(alloc_prelude)]
 
 #![allow(unused_variables,dead_code)]
 
@@ -44,7 +43,6 @@ use self::alloc::sync::Arc;
 use self::process_manager::Userspace;
 use self::vmem::PageManager;
 use core::cell::RefCell;
-use linked_list_allocator::LockedHeap;
 
 pub use crate::common::*;
 
@@ -58,14 +56,12 @@ bootloader::entry_point!(kernel_main);
 fn kernel_main(boot_info: &'static bootloader::BootInfo) -> ! {
   // init drivers for core hardware
   bindriver::init();
-  vga_println!("BoringOS v{}\n", version::VERSION);
+  info!("BoringOS v{}\n", version::VERSION);
   {
-    vga_print!("Initializing VMEM...");
-    debug!("initializing page mapper with phys mem offset");
     debug!("Probing existing memory ...");
     {
       debug!("Initializing VMEM Slab Allocator...");
-      pager().init(boot_info.physical_memory_offset).expect("init on pager failed");
+      pager().init(VirtAddr::new(boot_info.physical_memory_offset)).expect("init on pager failed");
       let mmap = &boot_info.memory_map;
       let mut usable_memory = 0;
       use core::ops::Deref;
@@ -116,10 +112,8 @@ fn kernel_main(boot_info: &'static bootloader::BootInfo) -> ! {
         free_memory / 4096
       );
     }
-    vga_print_green!("[ OK ]\n");
   }
   {
-    vga_print!("Initializing Process Manager...");
     unsafe { USERSPACE = Some(Arc::new(RefCell::new(Userspace::new()))) }
     let us = userspace();
     {
@@ -132,12 +126,10 @@ fn kernel_main(boot_info: &'static bootloader::BootInfo) -> ! {
           }
           Err(()) => {
             error!("Could not create PID0 KProc");
-            vga_print_red!("[ERR!]");
           }
         }
       });
     }
-    vga_print_green!("[ OK ]\n");
   }
 
   info!("entering userspace");
@@ -151,7 +143,6 @@ use core::panic::PanicInfo;
 
 pub fn coredump() -> ! {
   error!("Kernel Core Dumped");
-  vga_print_red!("\n\n===== CORE DUMPED =====\n");
   hlt_cpu!();
 }
 
@@ -159,7 +150,6 @@ pub fn coredump() -> ! {
 #[panic_handler]
 #[no_mangle]
 pub fn panic(info: &PanicInfo) -> ! {
-
   match info.message() {
     Some(s) => error!("Panic occured: {}", s),
     None => error!("Panic had no message"),
@@ -168,24 +158,13 @@ pub fn panic(info: &PanicInfo) -> ! {
     Some(s) => error!("Panicked at {}~{}", s.file(), s.line()),
     None => error!("Panic had no stracktrace"),
   }
-  vga_print_red!("\n\n===== PANIC OCCURED IN KERNEL =====\n");
-  match info.message() {
-    Some(s) => vga_print_red!("{}\n\n", s),
-    None => (),
-  }
   hlt_cpu!();
 }
 
 #[alloc_error_handler]
 #[no_mangle]
 pub fn alloc_error(layout: core::alloc::Layout) -> ! {
-  error!("Allocation Error: {} bytes", layout.size());
-  vga_print_red!("\n\n===== PANIC OCCURED IN KERNEL =====\n");
-  vga_print_red!("\n\n===== MEMORY SUBSYSTEM ERROR  =====\n");
-  vga_print_red!(
-    "Attempted to allocate {} bytes, vmem subsystem returned error\n",
-    layout.size()
-  );
+  error!("Allocation Error: {} bytes, CPU halted", layout.size());
 
   hlt_cpu!();
 }

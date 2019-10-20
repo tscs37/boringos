@@ -13,18 +13,17 @@ pub use crate::process_manager::memory::{
 pub use crate::process_manager::state::State;
 pub use crate::process_manager::task::Task;
 use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use core::mem::ManuallyDrop;
 
 #[derive(Clone)]
 pub struct Userspace {
-  scheduler: Arc<RwLock<Scheduler>>,
+  scheduler: ManuallyDrop<Arc<RwLock<Scheduler>>>,
 }
-
-panic_on_drop!(Userspace);
 
 impl Userspace {
   pub fn new() -> Userspace {
     Userspace {
-      scheduler: Arc::new(RwLock::new(Scheduler::new())),
+      scheduler: ManuallyDrop::new(Arc::new(RwLock::new(Scheduler::new()))),
     }
   }
   pub fn in_scheduler<T>(&self, run: impl Fn(RwLockReadGuard<Scheduler>) -> T) -> Result<T, ()> {
@@ -76,19 +75,17 @@ use alloc::string::String;
 
 #[derive(Clone)]
 pub struct Scheduler {
-  treg: Arc<RwLock<TaskHandleRegistry>>,
+  treg: ManuallyDrop<Arc<RwLock<TaskHandleRegistry>>>,
   scheduler_thandle: TaskHandle,
   current_task: TaskHandle,         //TODO: change for multi-CPU
   kernel_stack: Arc<RwLock<Memory>>, //TODO: handle multiple kernel stacks
 }
 
-panic_on_drop!(Scheduler);
-
 impl Scheduler {
   pub fn new() -> Scheduler {
     let nulltask = Task::new_nulltask();
     let s = Scheduler {
-      treg: Arc::new(RwLock::new(TaskHandleRegistry::new())),
+      treg: ManuallyDrop::new(Arc::new(RwLock::new(TaskHandleRegistry::new()))),
       scheduler_thandle: nulltask.me,
       current_task: nulltask.me,
       kernel_stack: Arc::new(RwLock::new(Memory::new_kernelstack())),
@@ -119,10 +116,17 @@ impl Scheduler {
     let n = name.into();
     let th = TaskHandle::gen();
     debug!("new task with handle {}", th);
-    let t = Task::new_task_from_elf(f, n.clone(), th);
-    self.insert_treg(t);
-    info!("registered kernel process '{}' ({})", n, th);
-    Ok(th)
+    #[cfg(feature = "elf_loading")]
+    {
+      let t = Task::new_task_from_elf(f, n.clone(), th);
+      self.insert_treg(t);
+      info!("registered kernel process '{}' ({})", n, th);
+      Ok(th)
+    }
+    #[cfg(not(feature = "elf_loading"))]
+    {
+      panic!("non_elf loading not implemented yet");
+    }
   }
   fn insert_treg(&self, t: Task) -> TaskHandle{
     let me = t.me;
@@ -139,7 +143,6 @@ impl Scheduler {
   // call yield_stage2 with the given process handle
   // this function will be called by the scheduler
   pub fn yield_to(&self, cur: TaskHandle, th: Option<TaskHandle>) {
-    dump_stack_addr!();
     match th {
       None => {
         let sched = self.scheduler_thandle;

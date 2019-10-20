@@ -5,8 +5,11 @@ authors = ["Tim Schuster <mail@timschuster.info>"]
 edition = "2018"
 
 [dependencies]
-uart_16550 = "0.1.0"
+uart_16550 = "^0.2"
 linked_list_allocator = "0.6.4"
 
 [dependencies.symrfp]
 path = "../symrfp"
+
+[patch.crates-io]
+x86_64 = { git = "https://github.com/rust-osdev/x86_64.git", branch = "remove-ux" }

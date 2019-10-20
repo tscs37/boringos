@@ -1,8 +1,0 @@
-[package]
-name = "sirfs"
-version = "0.1.0"
-authors = ["Tim Schuster <mail@timschuster.info>"]
-edition = "2018"
-
-[dependencies]
-bitflags = "1.0.4"

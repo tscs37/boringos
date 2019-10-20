@@ -1,4 +1,5 @@
 
+#[cfg(feature = "vga")]
 #[macro_use]
 pub mod vga_buffer;
 pub mod serial;

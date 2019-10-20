@@ -2,7 +2,6 @@ use core::cell::RefCell;
 use crate::PhysAddr;
 use crate::process_manager::TaskHandle;
 use crate::process_manager::memory::Memory;
-use x86_64::VirtAddr;
 
 const DEFAULT_PAGE_LIMIT: usize = 1024;
 
@@ -40,10 +39,12 @@ pub enum StateError {
   ELFExceedPHMax,
   ELFBadPH,
   ELFPHOverlap,
+  #[cfg(feature = "elf_loading")]
   ELFParseError(goblin::error::Error),
 }
 
 impl State {
+  #[cfg(feature ="elf_loading")]
   pub fn new_elfstate(elf_ptr: &[u8]) -> Result<State, StateError> {
     use goblin::elf::Elf;
     let code_memory = Memory::new_codememory();

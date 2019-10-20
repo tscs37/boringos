@@ -24,6 +24,7 @@ impl Task {
       name: name.into(),
     }
   }
+  #[cfg(feature = "elf_loading")]
   pub fn new_task_from_elf<S>(f: &[u8], name: S, me: TaskHandle) -> Task where S: Into<String> {
     warn!("new elf task, consider using a non-elf if possible");
     Task {

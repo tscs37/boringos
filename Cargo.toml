@@ -1,42 +1,43 @@
 [package]
 name = "boringos"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Tim Schuster <mail@timschuster.info>"]
 edition = "2018"
-
-[build]
-target = "x86_64-boringoscore.json"
+publish = false
 
 [dependencies]
-bootloader = { version = "^0.7", features = ["map_physical_memory"]}
-volatile = "^0.2"
+bootloader = { version = "^0.8", features = ["map_physical_memory"]}
 spin = "^0.5"
 uart_16550 = "^0.2"
 x86_64 = "^0.7"
 linked_list_allocator = "^0.6"
 static_assertions = "^0.3"
-bitflags = "^1.1"
+bitflags = "^1.0"
 raw-cpuid = "6.0.0"
 pic8259_simple = "0.1.1"
-rand_chacha = { version = "^0.2", default-features = false }
-rand_core = { version = "^0.5", default-features = false }
 atomic = {version = "^0.4", features = ["nightly"]}
-bit-vec = { version = "^0.6", default-features = false }
+log = "0.4.6"
 
 [dependencies.goblin]
 version = "^0.0"
 default_features = false
 features = ["elf64", "elf32", "endian_fd"]
+optional = true
 
 [dependencies.lazy_static]
-version = "1.0"
+version = "1.4"
 features = ["spin_no_std"]
-
-[dependencies.log]
-version = "0.4.5"
 
 [dependencies.symrfp]
 path = "./symrfp"
 
-[package.metadata.cargo-xbuild]
-memcpy = true
+[features]
+default = []
+elf_loading = ["goblin"]
+
+[profile.dev]
+opt-level = 3
+codegen-units = 16
+
+[patch.crates-io]
+x86_64 = { git = "https://github.com/rust-osdev/x86_64.git", branch = "remove-ux" }

@@ -28,18 +28,18 @@ unsafe impl<T> Sync for OptATPtr<T> {}
 impl<T> OptATPtr<T> {
   ///
   /// Swaps old for new value atomically, returns None if the swap failed
-  pub fn cas(&self, old: NNPtr, new: NNPtr) -> Option<NNPtr> {
+  pub fn cas(&self, old: NNTPtr<T>, new: NNTPtr<T>) -> Option<NNTPtr<T>> {
     NonNull::new(self.data.compare_exchange(
       old.as_ptr() as u64, new.as_ptr() as u64, 
-      Ordering::SeqCst, Ordering::SeqCst).unwrap() as *mut u8)
+      Ordering::SeqCst, Ordering::SeqCst).unwrap() as *mut T)
   }
-  pub fn set(&self, addr: NNPtr) -> Option<NNPtr> {
-    NonNull::new(self.data.swap(addr.as_ptr() as u64, Ordering::SeqCst) as *mut u8)
+  pub fn set(&self, addr: NNTPtr<T>) -> Option<NNTPtr<T>> {
+    NonNull::new(self.data.swap(addr.as_ptr() as u64, Ordering::SeqCst) as *mut T)
   }
-  pub fn get(&self) -> Option<NNPtr> {
+  pub fn get(&self) -> Option<NNTPtr<T>> {
     match self.data.load(Ordering::Relaxed) {
       0 => None,
-      ptr => Some(unsafe{NonNull::new_unchecked(ptr as *mut u8)}),
+      ptr => Some(unsafe{NonNull::new_unchecked(ptr as *mut T)}),
     }
   }
   pub const fn zero<Q>() -> OptATPtr<Q> {

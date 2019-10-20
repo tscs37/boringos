@@ -1,3 +1,6 @@
 
 [build]
-rustflags=['--emit=asm']
+target = "x86_64-boringoscore.json"
+
+[target.'cfg(target_os = "none")']
+runner = "bootimage runner"

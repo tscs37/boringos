@@ -6,18 +6,19 @@ CRATE = boringos
 QEMU_MEMORY = 512
 QEMU_PLATFORM = system-x86_64
 KERNEL_BUILD_MODE = debug
-RUST_VERSION = nightly-2019-07-19
+RUST_VERSION = nightly-2019-10-20
+BOOTIMAGE_VERSION = "0.7.7"
 BOOTIMG_FILE = target/$(KERNEL_TARGET)/$(KERNEL_BUILD_MODE)/bootimage-$(CRATE).bin
 BIN_FILE = target/$(KERNEL_TARGET)/debug/$(CRATE)
 QEMU_OPTIONS = -net none -m $(QEMU_MEMORY) \
-	-vga cirrus -cpu Broadwell \
+	-vga cirrus -cpu EPYC \
 	-drive if=ide,format=raw,file=$(BOOTIMG_FILE) \
 	-device isa-debug-exit,iobase=0xf4,iosize=0x04 \
 	-serial mon:stdio --no-reboot
 
-build: bootimage
-
 all: bootimage qemu
+
+build: bootimage
 
 release: qemu_release
 
@@ -28,7 +29,7 @@ rustup: .rustup
 	@rustup component add rls-preview rust-analysis
 	@rustup component add llvm-tools-preview
 	@cargo install cargo-xbuild --force
-	@cargo install bootimage --version "^0.7.0" --force
+	@cargo install bootimage --version "$(BOOTIMAGE_VERSION)" --force
 
 ln_targets: pid0/$(BIN_TARGET).json
 

@@ -1,12 +1,3 @@
-use rand_chacha::ChaCha12Rng;
-use rand_core::RngCore;
-use rand_core::SeedableRng;
-use spin::Mutex;
-
-lazy_static! {
-  //TODO: per CPU
-  static ref RNG: Mutex<ChaCha12Rng> = Mutex::new(ChaCha12Rng::seed_from_u64(134_304_831));
-}
 
 pub fn get_u128() -> u128 {
   let mut slice: [u8; 16] = [0; 16];
@@ -18,9 +9,7 @@ pub fn get_u128() -> u128 {
 
 pub fn get_u64() -> u64 {
   if !crate::bindriver::cpu::has_rdrand() {
-    // i just use mutex so it works
-    unsafe{RNG.force_unlock()};
-    RNG.lock().next_u64()
+    panic!("RDRAND but kernel compiled without internal RNG")
   } else {
     let rnd: u64;
     let retry: u32;

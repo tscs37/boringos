@@ -6,6 +6,7 @@ use crate::*;
 
 fn crack_locks() {
     unsafe { crate::bindriver::serial::SERIAL1.force_unlock() }
+    #[cfg(feature="vga")]
     unsafe { crate::bindriver::vga_buffer::WRITER.force_unlock() }
 }
 
@@ -96,7 +97,6 @@ busy_intr_handle_errcode!(stack_segment_fault);
 busy_intr_handle_errcode!(general_protection_fault);
 
 extern "x86-interrupt" fn breakpoint(stack_frame: &mut InterruptStackFrame) {
-    dump_stack_addr!();
     debug!("BREAKPOINT\n{:#?}\n", stack_frame);
 }
 
@@ -104,8 +104,8 @@ extern "x86-interrupt" fn double_fault(stack_frame: &mut InterruptStackFrame, er
     crack_locks();
     error!("Double Fault, Kernel Halting...");
     error!("Error: {:x}", error_code);
-    vga_println!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
-    vga_println!("\n\nBUSY LOOPING CORE");
+    #[cfg(feature = "vga")]
+    vga_println!("EXCEPTION: DOUBLE FAULT\n{:#?}\n\nBUSY LOOPING CORE", stack_frame);
     hlt_cpu!();
 }
 

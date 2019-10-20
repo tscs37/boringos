@@ -8,8 +8,11 @@ mod macros;
 mod kinfo;
 mod katomic;
 mod kput;
+mod kheap;
 
 pub use katomic::*;
+
+pub use kheap::*;
 
 pub use crate::common::kinfo::*;
 
@@ -72,7 +75,7 @@ pub fn current_taskhandle() -> Result<TaskHandle, ()> {
   })
 }
 
-pub fn pager<'a>() -> KPutGuard<'a, PageManager<'static>> {
+pub fn pager<'a>() -> KPutGuard<'a, PageManager> {
   crate::PAGER.try_write().expect("locking page manager failed")
 }
 
