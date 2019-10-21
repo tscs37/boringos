@@ -10,7 +10,7 @@ use crate::*;
 
 pub const PAGE_SIZE: usize = 4096;
 
-const BOOT_MEMORY_PAGES: u16 = 250;
+const BOOT_MEMORY_PAGES: u16 = 16;
 
 pub const KSTACK_START: usize  = 0xffff_ff80_0000_0000;
 pub const KSTACK_END: usize    = 0xffff_ff70_0000_0000;
@@ -138,7 +138,7 @@ impl PageManager {
     }
   }
 
-  fn print_free_mem(&self) {
+  pub fn print_free_mem(&self) {
     let pages = self.free_memory();
     let mem = pages * 4096;
     trace!("Free memory now {} KiB, {} MiB, {} Pages",
@@ -148,16 +148,50 @@ impl PageManager {
     );
   }
 
-  pub unsafe fn add_memory(&mut self, start: PhysAddr, num_pages: usize) -> Result<(), PagePoolAppendError> {
+  pub fn print_used_mem(&self) {
+    let pages = self.used_memory();
+    let mem = pages * 4096;
+    trace!("Used memory now {} KiB, {} MiB, {} Pages",
+      mem / 1024,
+      mem / 1024 / 1024,
+      pages
+    );
+  } 
+
+  pub fn print_total_mem(&self) {
+    let pages = self.total_memory();
+    let mem = pages * 4096;
+    trace!("Total memory now {} KiB, {} MiB, {} Pages",
+      mem / 1024,
+      mem / 1024 / 1024,
+      pages
+    );
+  } 
+
+  pub fn print_mem_summary(&self) {
+    self.print_total_mem();
+    self.print_used_mem();
     self.print_free_mem();
-    trace!("Adding MMAPE {:?}+{} to pool", start, num_pages);
-    self.pagepool_mut().add_memory(start, num_pages)?;
-    self.print_free_mem();
-    Ok(())
+  }
+
+  pub fn pagemap_layout() -> alloc::alloc::Layout {
+    alloc::alloc::Layout::new::<PageMap>()
+  } 
+
+  // Add memory to the pagepool, requires a PageMap-sized allocation to be passed
+  // Returns number of pages added to the pool, loop until this number is 0
+  pub unsafe fn add_memory(&mut self, alloc: *mut PageMap, start: PhysAddr, num_pages: u64) -> Result<u64, PagePoolAppendError> {
+    Ok(self.pagepool_mut().add_memory(alloc, start, num_pages)?)
   }
   pub fn free_memory(&self) -> usize {
     self.pagepool().count_free()
   }
+  pub fn total_memory(&self) -> usize {
+    self.pagepool().count_all()
+  } 
+  pub fn used_memory(&self) -> usize {
+    self.pagepool().count_used()
+  } 
   pub unsafe fn alloc_page(&mut self) -> Result<PhysAddr, PagePoolAllocationError> {
     self.pagepool_mut().allocate()
   }

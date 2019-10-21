@@ -59,6 +59,13 @@ pub trait PagePool {
   /// Returns the number of free memory pages, this value should be cached
   fn count_free(&self) -> usize;
 
+  /// Returns the total number of memory pages in the page pool
+  fn count_all(&self) -> usize;
+
+  fn count_used(&self) -> usize {
+    self.count_all() - self.count_free()
+  } 
+
   /// Outputs the page pool into the kernel debug log
   fn dump(&self);
 
@@ -73,7 +80,9 @@ pub trait PagePool {
   /// A section of memory specified by pa and sz is to be added to the page pool.
   /// The page pool must use the normal memory allocator for this operation.
   /// THIS OPERATION IS NOT REENTRANT OR ATOMIC
-  fn add_memory(&mut self, pa: PhysAddr, sz: usize) -> Result<(), PagePoolAppendError>;
+  /// The caller must provide a valid allocation to this function
+  /// as allocating memory is not possible inside
+  fn add_memory(&mut self, alloc: *mut PageMap, pa: PhysAddr, sz: u64) -> Result<u64, PagePoolAppendError>;
 }
 
 use x86_64::structures::paging::{PhysFrame, FrameAllocator, FrameDeallocator};

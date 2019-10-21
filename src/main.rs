@@ -70,7 +70,6 @@ fn kernel_main(boot_info: &'static bootloader::BootInfo) -> ! {
       }
       debug!("loading memory map");
       let mmap = &boot_info.memory_map;
-      let mut usable_memory = 0;
       use core::ops::Deref;
       let mmap_entries = mmap.deref();
       for x in 0..mmap_entries.len() {
@@ -86,38 +85,40 @@ fn kernel_main(boot_info: &'static bootloader::BootInfo) -> ! {
         use bootloader::bootinfo::MemoryRegionType;
         match entry.region_type {
           MemoryRegionType::Usable => {
-            let size = range.end_addr() - range.start_addr();
+            let size = (range.end_addr() - range.start_addr()) / 4096;
             trace!(
               "Adding MMAPE {:#04x} to usable memory... {} KiBytes, {} Pages",
               x,
-              size / 1024,
-              size / 4096
+              size * 4,
+              size
             );
-            usable_memory += size;
-            unsafe { match pager().add_memory(
-              PhysAddr::new(range.start_addr()),
-                (size / 4096) as usize - 1,) 
-              {
-                Ok(_) => {},
-                Err(pae) => warn!("could not add memory: {:?}", pae),
-              }
-            };
+            use crate::vmem::pagelist::pagelist_ng::PageMap;
+            use alloc::alloc::{Alloc, Global};
+            let layout = PageManager::pagemap_layout();
+            let mut rem_pages: u64 = size;
+            let mut total_added_pages: u64 = 0;
+            while rem_pages > 0 { 
+              let ptr = unsafe{(Global{}).alloc_zeroed(layout)}
+                .expect("could not allocate memory for pagemap");
+              let ptr: *mut PageMap = ptr.cast().as_ptr();
+              let added_pages = unsafe { match pager().add_memory(
+                ptr,
+                PhysAddr::new(range.start_addr() + (total_added_pages as u64 * 4096)),
+                  rem_pages.try_into().unwrap()) 
+                {
+                  Ok(v) => v,
+                  Err(pae) => panic!("could not add memory: {:?}", pae),
+                }
+              };
+              rem_pages -= added_pages;
+              total_added_pages += added_pages;
+              assert!((rem_pages as u64) < size, "rem_pages has overflown");
+            }
           }
           _ => {}
         }
       }
-      trace!(
-        "Total usable memory: {:16} KiB, {:8} MiB",
-        usable_memory / 1024,
-        usable_memory / 1024 / 1024
-      );
-      let free_memory = pager().free_memory();
-      debug!(
-        "Available memory: {} KiB, {} MiB, {} Pages",
-        free_memory / 1024,
-        free_memory / 1024 / 1024,
-        free_memory / 4096
-      );
+      pager().print_mem_summary();
     }
   }
   {

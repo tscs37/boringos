@@ -3,7 +3,7 @@
 KERNEL_TARGET = x86_64-boringoscore
 BIN_TARGET = x86_64-boringosbase
 CRATE = boringos
-QEMU_MEMORY = 512
+QEMU_MEMORY = 128
 QEMU_PLATFORM = system-x86_64
 KERNEL_BUILD_MODE = debug
 RUST_VERSION = nightly-2019-10-20

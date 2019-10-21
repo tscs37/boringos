@@ -54,17 +54,18 @@ impl PageMap {
   // and consumes as many pages as possible until either it's capacity
   // is exhausted or PAGES_PER_BLOCK maximum is reached.
   // If PAGES_PER_BLOCK was exhausted, the remaining pages are returned.
-  fn new(page_map: *mut PageMap, start: PhysAddr, size: u16) -> (*mut PageMap, u16) {
+  fn new(page_map: *mut PageMap, start: PhysAddr, size: u64) -> (*mut PageMap, u64) {
     assert_eq!(PAGES_PER_BLOCK & 0xFFFF, PAGES_PER_BLOCK, "PAGES_PER_BLOCK must fit in u16");
     trace!("calculating pagemap size");
-    let actual_size: u16 = core::cmp::min(size, PAGES_PER_BLOCK as u16);
-    trace!("checking for remained");
-    let rem_size = if actual_size != size { size.saturating_sub(actual_size) } else { 0 };
+    let actual_size: u16 = if size < PAGES_PER_BLOCK.try_into().unwrap() { size.try_into().unwrap() } 
+      else { PAGES_PER_BLOCK.try_into().unwrap() };
+    let rem_size: u64 = size - actual_size as u64;
+    trace!("size = {}, actual_size = {}, rem_size = {}", size, actual_size, rem_size);
     trace!("writing to pagemap");
     let pm = PageMap {
       start,
       size: actual_size,
-      free_pages: AtomicU16::new(size),
+      free_pages: AtomicU16::new(actual_size),
       next: None,
       used: unsafe{core::mem::MaybeUninit::zeroed().assume_init()},
     };
@@ -73,7 +74,7 @@ impl PageMap {
     for x in 0..PAGES_PER_BLOCK {
       unsafe { (*page_map).used[x] = AtomicBool::new(false) };
     }
-    (page_map, rem_size)
+    (page_map, size - (actual_size as u64))
   }
 }
 
@@ -137,6 +138,13 @@ impl PagePool for PageMapWrapper {
     val
   }
 
+  fn count_all(&self) -> usize {
+    (self.size as usize) + match self.next{
+      Some(next) => next.count_all(),
+      None => 0,
+    } 
+  } 
+
   fn dump(&self) {
     debug!("PagePool for {:?}", self.start);
     debug!("Size: {} pages, {} KB", self.size, self.size * 4);
@@ -179,45 +187,34 @@ impl PagePool for PageMapWrapper {
     }
   }
 
-  fn add_memory(&mut self, pa: PhysAddr, sz: usize) -> Result<(), PagePoolAppendError> {
+  // Adds memory to pool and returns number of remaining pages
+  fn add_memory(&mut self, alloc: *mut PageMap, pa: PhysAddr, sz: u64) -> Result<u64, PagePoolAppendError> {
     match self.next {
-      Some(mut next) => next.add_memory(pa, sz),
+      Some(mut next) => next.add_memory(alloc, pa, sz),
       None => {
         trace!("adding {:?}+{} to page pool", pa, sz);
         use core::alloc::Layout;
-        use alloc::alloc::Global;
-        use core::alloc::Alloc;
-        use core::cmp::min;
 
         // Allocate the pagemap in memory
-        trace!("allocating pagemap in memory");
         let layout = Layout::new::<PageMap>();
         assert!(layout.align() == PAGE_SIZE, "pages must be aligned to pagesize");
-        let ptr = unsafe{(Global{}).alloc_zeroed(layout)}.expect("could not allocate memory for pagemap");
-        let ptr: *mut PageMap = ptr.cast().as_ptr();
-
-        // Calculate maximum of pages we can put into the new map
-        trace!("adjust page allocation bitmap");
-        let sza = min(sz, core::u16::MAX as usize) as u16;
+        let ptr = alloc;
 
         // Create the new pagemap from memory
-        trace!("creating new pagemap");
-        let (pm, rem) = PageMap::new(ptr, pa, sza);
-        let sza = sza as usize;
-        let sza = sza + rem as usize;
+        let (pm, rem) = PageMap::new(ptr, pa, sz.into());
+        trace!("rem: {}", rem);
 
         // Wrap the resulting pagemap
-        trace!("moving into pagemap wrapper");
-        let mut pm = PageMapWrapper(NonNull::new(ptr)?);
+        let pm = PageMapWrapper(NonNull::new(ptr)?);
         trace!("PMW : {}", pm);
 
         // Update linked list
         self.next = Some(pm);
-        if sz > sza {
-          debug!("adding memory section to memory pool");
-          Ok(pm.add_memory(pa + sza, sz - sza)?)
+        if sz-rem > 0 {
+          trace!("added {} pages", sz-rem);
+          Ok(sz-rem)
         } else {
-          Ok(())
+          Ok(0)
         }
       }
     }
