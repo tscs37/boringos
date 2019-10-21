@@ -22,7 +22,6 @@ log = "0.4.6"
 version = "^0.0"
 default_features = false
 features = ["elf64", "elf32", "endian_fd"]
-optional = true
 
 [dependencies.lazy_static]
 version = "1.4"
@@ -33,7 +32,6 @@ path = "./symrfp"
 
 [features]
 default = []
-elf_loading = ["goblin"]
 
 [profile.dev]
 opt-level = 3

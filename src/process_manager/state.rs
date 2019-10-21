@@ -39,12 +39,10 @@ pub enum StateError {
   ELFExceedPHMax,
   ELFBadPH,
   ELFPHOverlap,
-  #[cfg(feature = "elf_loading")]
   ELFParseError(goblin::error::Error),
 }
 
 impl State {
-  #[cfg(feature ="elf_loading")]
   pub fn new_elfstate(elf_ptr: &[u8]) -> Result<State, StateError> {
     use goblin::elf::Elf;
     let code_memory = Memory::new_codememory();
@@ -105,8 +103,6 @@ impl State {
                 debug!("vmr.start > cur_real_base, setting zero page offset");
                 let size = (vmr.start - cur_real_base) / crate::vmem::PAGE_SIZE;
                 assert!(size < core::u16::MAX as usize, "size was {}, bigger than {}", size, core::u16::MAX);
-                trace!("pretouching memory to zero page for program");
-                crate::vmem::mapper::map_zero(VirtAddr::new(cur_real_base as u64), size as u16);
                 if is_code_section {
                   trace!("setting code memory offset");
                   code_memory.set_zero_page_offset(size as u16);

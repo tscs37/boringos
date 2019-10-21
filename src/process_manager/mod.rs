@@ -116,16 +116,11 @@ impl Scheduler {
     let n = name.into();
     let th = TaskHandle::gen();
     debug!("new task with handle {}", th);
-    #[cfg(feature = "elf_loading")]
     {
       let t = Task::new_task_from_elf(f, n.clone(), th);
       self.insert_treg(t);
       info!("registered kernel process '{}' ({})", n, th);
       Ok(th)
-    }
-    #[cfg(not(feature = "elf_loading"))]
-    {
-      panic!("non_elf loading not implemented yet");
     }
   }
   fn insert_treg(&self, t: Task) -> TaskHandle{
