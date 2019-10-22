@@ -14,7 +14,7 @@ pub struct State {
   start_rip: PhysAddr,
   //TODO: use locked memory handling
   stack: Memory,
-  memory: Memory,
+  data: Memory,
   code: Memory,
   //TODO: make atomic
   rsp: usize,
@@ -80,12 +80,17 @@ impl State {
               // effectively using ELF loading by being very annoying
               let base = filer.start + (&elf_ptr[0] as *const u8 as usize);
               trace!("base is {:#018x}, checking inmemory base...", base);
-              let is_code_section = !ph.is_write() && vmr.start >= crate::vmem::CODE_START && vmr.end <= crate::vmem::CODE_END;
+              trace!("CODE: {:#018x} - {:#018x}", crate::vmem::CODE_START, crate::vmem::CODE_END);
+              trace!("DATA: {:#018x} - {:#018x}", crate::vmem::DATA_START, crate::vmem::DATA_END);
+              let is_code_section = ph.is_executable() && vmr.start >= crate::vmem::CODE_START && vmr.end <= crate::vmem::CODE_END;
               let is_data_section = ph.is_read() && vmr.start >= crate::vmem::DATA_START && vmr.end <= crate::vmem::DATA_END;
-              if !is_code_section && !is_data_section {
+              let is_bss_section = !ph.is_executable() && vmr.start >= crate::vmem::CODE_START && vmr.end <= crate::vmem::CODE_END;
+              if !is_code_section && !is_data_section && !is_bss_section {
                 panic!("bad section in ELF load: {:#018x}, RWX ({},{},{})", vmr.start, ph.is_read(), ph.is_write(), ph.is_executable());
               }
-              trace!("PHFlags: R={}, W={}, X={}, {:#018x}, Code={}, Data={}", ph.is_read(), ph.is_write(), ph.is_executable(), vmr.start, is_code_section, is_data_section);
+              trace!("PHFlags: R={}, W={}, X={}, {:#018x}, Code={}, Data={}, BSS={}", 
+                ph.is_read(), ph.is_write(), ph.is_executable(), 
+                vmr.start, is_code_section, is_data_section, is_bss_section);
               let cur_real_base = {
                 if is_code_section {
                   crate::kinfo().get_code_memory_ref_size()
@@ -95,25 +100,57 @@ impl State {
                   crate::kinfo().get_data_memory_ref_size()
                   * crate::vmem::PAGE_SIZE
                   + crate::vmem::DATA_START
+                } else if is_bss_section {
+                  crate::kinfo().get_code_memory_ref_size()
+                  * crate::vmem::PAGE_SIZE
+                  + crate::vmem::CODE_START
                 } else {
-                  panic!("RWX on Program Header")
+                  panic!("invalid RWX on Program Header")
                 }
               };
-              if vmr.start > cur_real_base + crate::vmem::PAGE_SIZE {
-                debug!("vmr.start > cur_real_base, setting zero page offset");
-                let size = (vmr.start - cur_real_base) / crate::vmem::PAGE_SIZE;
-                assert!(size < core::u16::MAX as usize, "size was {}, bigger than {}", size, core::u16::MAX);
-                if is_code_section {
-                  trace!("setting code memory offset");
-                  code_memory.set_zero_page_offset(size as u16);
-                  trace!("code_memory page_count = {}", code_memory.page_count());
-                } else if is_data_section {
-                  trace!("setting data memory offset");
-                  data_memory.set_zero_page_offset(size as u16);
-                  trace!("data_memory page_count = {}", data_memory.page_count());
+              let over_offset = vmr.start > cur_real_base + crate::vmem::PAGE_SIZE;
+              trace!("vmr.start = {:#018x}, cur_real_base = {:#018x}, over_offset = {}",
+                vmr.start,
+                cur_real_base + crate::vmem::PAGE_SIZE,
+                over_offset
+              );
+              if over_offset {
+                trace!("over offset, checking...");
+                let offset = vmr.start - cur_real_base;
+                if is_bss_section {
+                  trace!("bss section, pretouching missing memory");
+                  if offset % 4096 == 0{
+                    let pages = offset / 4096;
+                    trace!("need {} more pages", pages);
+                    for x in 0..pages {
+                      let ptr = cur_real_base + 4096 * x;
+                      trace!("touching {:#018x}", ptr);
+                      let ptr = ptr as *mut u8;
+                      let ptr = ptr as *mut volatile::Volatile<u8>;
+                      assert_eq!(unsafe{ptr.read().read()}, 0, "read empty page equals zero");
+                    }
+                  } else {
+                    warn!("non-continonus segment with less than page-sized gap");
+                  }
                 } else {
-                  panic!("offset on non-code memory");
+                  panic!("invalid non-continous segment")
                 }
+              }
+              debug!("vmr.start > cur_real_base, setting zero page offset");
+              let size = (vmr.start - cur_real_base) / crate::vmem::PAGE_SIZE;
+              assert!(size < core::u16::MAX as usize, "size was {}, bigger than {}", size, core::u16::MAX);
+              if is_code_section {
+                trace!("setting code memory offset");
+                code_memory.set_zero_page_offset(size as u16);
+                trace!("code_memory page_count = {}", code_memory.page_count());
+              } else if is_data_section {
+                trace!("setting data memory offset");
+                data_memory.set_zero_page_offset(size as u16);
+                trace!("data_memory page_count = {}", data_memory.page_count());
+              } else if is_bss_section {
+                trace!("bss section handled offset");
+              } else {
+                panic!("offset on non-code memory");
               }
               debug!(
                 "PH, {:#018x} : {:#08x} ({:#08x}) -> {:#018x}",
@@ -138,7 +175,7 @@ impl State {
           } else if ph.p_type == goblin::elf::program_header::PT_GNU_STACK {
             debug!("GNU_STACK, ignoring");
           } else {
-            panic!("Unknown ELF section: {:?}, not loading", ph);
+            panic!("Unknown ELF section: {:?} ({}), not loading", ph, ph.p_type);
           }
         }
         code_memory.unmap();
@@ -153,7 +190,7 @@ impl State {
           mode: CPUMode::Kernel,
           start_rip: PhysAddr::new(binary.entry),
           stack: Memory::new_stack(),
-          memory: data_memory,
+          data: data_memory,
           code: code_memory,
           rsp: crate::vmem::STACK_START,
           rbp: crate::vmem::STACK_START,
@@ -173,7 +210,7 @@ impl State {
       mode: CPUMode::Kernel,
       start_rip: PhysAddr::try_new(null_fn as u64).expect("null_fn must resolve"),
       stack: Memory::new_nomemory(),
-      memory: Memory::new_nomemory(),
+      data: Memory::new_nomemory(),
       code: Memory::new_nomemory(),
       rsp: crate::vmem::STACK_START,
       rbp: crate::vmem::STACK_START,
@@ -187,7 +224,7 @@ impl State {
   }
   pub fn reset(&mut self) {
     self.stack = Memory::new_stack();
-    self.memory = Memory::new_usermemory();
+    self.data = Memory::new_usermemory();
     self.code = Memory::new_codememory();
   }
   pub fn set_codeimage(&mut self, code_img: &[u8]) -> usize {
@@ -197,26 +234,11 @@ impl State {
   pub fn activate(&mut self) {
     self.active = true;
   }
-  pub fn clone_state(&self) -> State {
-    State {
-      active: false,
-      mode: self.mode,
-      start_rip: self.start_rip,
-      stack: self.stack.clone_cow(),
-      memory: self.stack.clone_cow(),
-      code: self.stack.clone_cow(),
-      rsp: self.rsp,
-      rbp: self.rbp,
-      page_limit: self.page_limit,
-      signalrecv: self.signalrecv,
-      killh: self.killh,
-    }
-  }
   pub fn map(&self) {
     trace!("mapping stack memory");
     self.stack.map();
     trace!("mapping user memory");
-    self.memory.map();
+    self.data.map();
     trace!("mapping code memory");
     self.code.map();
   }
@@ -224,7 +246,7 @@ impl State {
     trace!("unmapping stack memory");
     self.stack.unmap();
     trace!("unmapping user memory");
-    self.memory.unmap();
+    self.data.unmap();
     trace!("unmapping code memory");
     self.code.unmap();
   }
@@ -322,7 +344,7 @@ pub unsafe fn switch_to(next_task: Arc<RefCell<crate::process_manager::Task>>, n
     assert_eq!(current_task_handle.into_c(), 0, "enter userspace from no running tasks");
     kinfo.set_memory_ref(&state.code);
     kinfo.set_memory_ref(&state.stack);
-    kinfo.set_memory_ref(&state.memory);
+    kinfo.set_memory_ref(&state.data);
   }
   let rip = (next_task.borrow()).rip();
   let rsp = (next_task.borrow()).rsp();

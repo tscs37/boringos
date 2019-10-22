@@ -45,6 +45,7 @@ dependencies = [
  "static_assertions 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "symrfp 0.1.0",
  "uart_16550 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "volatile 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "x86_64 0.7.5 (git+https://github.com/rust-osdev/x86_64.git?branch=remove-ux)",
 ]
 
@@ -225,6 +226,11 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "volatile"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "x86_64"
 version = "0.7.5"
 source = "git+https://github.com/rust-osdev/x86_64.git?branch=remove-ux#4e71da5cc55dbaf9e2a61b4a5665567006e9ea76"
@@ -265,4 +271,5 @@ dependencies = [
 "checksum syn 0.15.44 (registry+https://github.com/rust-lang/crates.io-index)" = "9ca4b3b69a77cbe1ffc9e198781b7acb0c7365a883670e8f1c1bc66fba79a5c5"
 "checksum uart_16550 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "803ea8cb602dbb32c1a657a866d2dd79fe7dbeab0fb2ac667cb4dcc7de12a58b"
 "checksum unicode-xid 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fc72304796d0818e357ead4e000d19c9c174ab23dc11093ac919054d20a6a7fc"
+"checksum volatile 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)" = "6af0edf5b4faacc31fc51159244d78d65ec580f021afcef7bd53c04aeabc7f29"
 "checksum x86_64 0.7.5 (git+https://github.com/rust-osdev/x86_64.git?branch=remove-ux)" = "<none>"

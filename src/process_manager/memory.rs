@@ -134,29 +134,13 @@ impl Memory {
   pub fn new_kernelstack() -> Memory {
     Memory::KernelStack(MemoryKernel::new())
   }
-  pub fn clone_cow(&self) -> Memory {
-    self.clone()
-    //TODO:
-  }
   pub fn map(&self) {
     match self {
       Memory::NoMemory => (),
-      Memory::User(s) => (*s).borrow().map(
-        VirtAddr::new(crate::vmem::DATA_START.try_into().unwrap()),
-        MapType::Data,
-      ),
-      Memory::Code(s) => (*s).borrow().map(
-        VirtAddr::new(crate::vmem::CODE_START.try_into().unwrap()),
-        MapType::Code,
-      ),
-      Memory::Stack(s) => (*s).borrow().map(
-        VirtAddr::new(crate::vmem::STACK_START.try_into().unwrap()),
-        MapType::Stack,
-      ),
-      Memory::KernelStack(s) => (*s).borrow().map(
-        VirtAddr::new(crate::vmem::KSTACK_START.try_into().unwrap()),
-        MapType::Stack,
-      ),
+      Memory::User(s) => (*s).borrow().map(self.start_address(), MapType::Data),
+      Memory::Code(s) => (*s).borrow().map(self.start_address(), MapType::Code),
+      Memory::Stack(s) => (*s).borrow().map(self.start_address(), MapType::Stack),
+      Memory::KernelStack(s) => (*s).borrow().map(self.start_address(), MapType::Stack),
     }
   }
   // map_rw maps all data into memory but as non-executable read-write
@@ -164,19 +148,19 @@ impl Memory {
     match self {
       Memory::NoMemory => (),
       Memory::User(s) => (*s).borrow().map(
-        VirtAddr::new(crate::vmem::DATA_START.try_into().unwrap()),
+        self.start_address(),
         MapType::Data,
       ),
       Memory::Code(s) => (*s).borrow().map(
-        VirtAddr::new(crate::vmem::CODE_START.try_into().unwrap()),
+        self.start_address(),
         MapType::Data,
       ),
       Memory::Stack(s) => (*s).borrow().map(
-        VirtAddr::new(crate::vmem::STACK_START.try_into().unwrap()),
+        self.start_address(),
         MapType::Stack,
       ),
       Memory::KernelStack(s) => (*s).borrow().map(
-        VirtAddr::new(crate::vmem::KSTACK_START.try_into().unwrap()),
+        self.start_address(),
         MapType::Stack,
       ),
     }
@@ -189,17 +173,26 @@ impl Memory {
         MapType::Data,
       ),
       Memory::Code(s) => (*s).borrow().unmap(
-        VirtAddr::new(crate::vmem::CODE_START.try_into().unwrap()),
+        self.start_address(),
         MapType::Code,
       ),
       Memory::Stack(s) => (*s).borrow().unmap(
-        VirtAddr::new(crate::vmem::STACK_START.try_into().unwrap()),
+        self.start_address(),
         MapType::Stack,
       ),
       Memory::KernelStack(s) => (*s).borrow().unmap(
-        VirtAddr::new(crate::vmem::KSTACK_START.try_into().unwrap()),
+        self.start_address(),
         MapType::Stack,
       ),
+    }
+  }
+  pub fn start_address(&self) -> VirtAddr {
+    match self {
+      Memory::NoMemory => VirtAddr::new(0),
+      Memory::User(_) => VirtAddr::new(crate::vmem::DATA_START.try_into().unwrap()),
+      Memory::Code(_) => VirtAddr::new(crate::vmem::CODE_START.try_into().unwrap()),
+      Memory::Stack(_) => VirtAddr::new(crate::vmem::STACK_START.try_into().unwrap()),
+      Memory::KernelStack(_) => VirtAddr::new(crate::vmem::KSTACK_START.try_into().unwrap()),
     }
   }
   pub fn get_zero_page_offset(&self) -> u16 {

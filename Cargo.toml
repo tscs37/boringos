@@ -17,6 +17,7 @@ raw-cpuid = "6.0.0"
 pic8259_simple = "0.1.1"
 atomic = {version = "^0.4", features = ["nightly"]}
 log = "0.4.6"
+volatile = "0.2.6"
 
 [dependencies.goblin]
 version = "^0.0"
