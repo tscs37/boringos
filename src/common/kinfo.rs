@@ -83,21 +83,18 @@ impl KernelInfo {
     trace!("adding {:?} to active code memory", p);
     let ptr = self.current_code_memory_ref_int.load(Ordering::SeqCst);
     let mur = MemoryUserRef::from(ptr);
-    self.add_page_to_mur(p, mur)
+    mur.add_page(p);
   }
   pub fn add_data_page(&self, p: PhysAddr) {
     trace!("adding {:?} to active data memory", p);
     let ptr = self.current_data_memory_ref_int.load(Ordering::SeqCst);
     let mur = MemoryUserRef::from(ptr);
-    self.add_page_to_mur(p, mur)
+    mur.add_page(p);
   }
   pub fn add_stack_page(&self, p: PhysAddr) {
     trace!("adding {:?} to active stack memory", p);
     let ptr = self.current_stack_memory_ref_int.load(Ordering::SeqCst);
     let mur = MemoryUserRef::from(ptr);
-    self.add_page_to_mur(p, mur)
-  }
-  fn add_page_to_mur(&self, p: PhysAddr, mur: MemoryUserRef) {
     mur.add_page(p);
   }
   pub fn get_code_memory_ref_size(&self) -> usize {
