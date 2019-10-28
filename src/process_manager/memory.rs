@@ -110,9 +110,16 @@ impl core::fmt::Debug for MemoryKernelRef {
 }
 
 #[derive(Clone, Debug)]
+pub struct OffsetMemoryUserRef {
+  offset: VirtAddr,
+  mur: MemoryUserRef
+}
+
+#[derive(Clone, Debug)]
 pub enum Memory {
   NoMemory,
   User(MemoryUserRef),
+  BSS(OffsetMemoryUserRef),
   Code(MemoryUserRef),
   Stack(MemoryUserRef),
   KernelStack(MemoryKernelRef),
@@ -128,16 +135,26 @@ impl Memory {
   pub fn new_codememory() -> Memory {
     Memory::Code(MemoryUser::new_empty())
   }
+  pub fn new_bssmemory(offset: VirtAddr) -> Memory {
+    Memory::BSS(OffsetMemoryUserRef{ offset, mur: MemoryUser::new_empty() })
+  }
   pub fn new_stack() -> Memory {
     Memory::Stack(MemoryUser::new_sized(3))
   }
   pub fn new_kernelstack() -> Memory {
     Memory::KernelStack(MemoryKernel::new())
   }
+  pub fn set_offset(&mut self, new_offset: VirtAddr) {
+    match self {
+      Memory::BSS(ref mut v) => { v.offset = new_offset },
+      _ => (),
+    }
+  }
   pub fn map(&self) {
     match self {
       Memory::NoMemory => (),
       Memory::User(s) => (*s).borrow().map(self.start_address(), MapType::Data),
+      Memory::BSS(s) => (*s.mur).borrow().map(self.start_address(), MapType::Data),
       Memory::Code(s) => (*s).borrow().map(self.start_address(), MapType::Code),
       Memory::Stack(s) => (*s).borrow().map(self.start_address(), MapType::Stack),
       Memory::KernelStack(s) => (*s).borrow().map(self.start_address(), MapType::Stack),
@@ -148,6 +165,10 @@ impl Memory {
     match self {
       Memory::NoMemory => (),
       Memory::User(s) => (*s).borrow().map(
+        self.start_address(),
+        MapType::Data,
+      ),
+      Memory::BSS(s) => (*s.mur).borrow().map(
         self.start_address(),
         MapType::Data,
       ),
@@ -176,6 +197,10 @@ impl Memory {
         self.start_address(),
         MapType::Code,
       ),
+      Memory::BSS(s) => (*s.mur).borrow().unmap(
+        self.start_address(),
+        MapType::Data,
+      ),
       Memory::Stack(s) => (*s).borrow().unmap(
         self.start_address(),
         MapType::Stack,
@@ -191,6 +216,7 @@ impl Memory {
       Memory::NoMemory => VirtAddr::new(0),
       Memory::User(_) => VirtAddr::new(crate::vmem::DATA_START.try_into().unwrap()),
       Memory::Code(_) => VirtAddr::new(crate::vmem::CODE_START.try_into().unwrap()),
+      Memory::BSS(s) => VirtAddr::new(crate::vmem::CODE_START.try_into().unwrap()) + s.offset.as_u64(),
       Memory::Stack(_) => VirtAddr::new(crate::vmem::STACK_START.try_into().unwrap()),
       Memory::KernelStack(_) => VirtAddr::new(crate::vmem::KSTACK_START.try_into().unwrap()),
     }
@@ -200,6 +226,7 @@ impl Memory {
       Memory::NoMemory => 0,
       Memory::User(s) => (*s).borrow_mut().zero_page_offset,
       Memory::Code(s) => (*s).borrow_mut().zero_page_offset,
+      Memory::BSS(s) => (*s.mur).borrow_mut().zero_page_offset,
       Memory::Stack(_) => 0, // Stacks don't skip
       Memory::KernelStack(_) => 0,
     }
@@ -217,6 +244,7 @@ impl Memory {
     match self {
       Memory::NoMemory => (),
       Memory::User(s) => (*s).borrow_mut().zero_page_offset = offset,
+      Memory::BSS(s) => (*s.mur).borrow_mut().zero_page_offset = offset,
       Memory::Code(s) => (*s).borrow_mut().zero_page_offset = offset,
       Memory::Stack(_) => panic!("kernel tried to set offset on stack memory"),
       Memory::KernelStack(_) => panic!("kernel tried to set offset on kernel stack memory"),
@@ -227,6 +255,7 @@ impl Memory {
       Memory::NoMemory => 0,
       Memory::User(s) => (*s).borrow().page_count(),
       Memory::Code(s) => (*s).borrow().page_count(),
+      Memory::BSS(s) => (*s.mur).borrow().page_count(),
       Memory::Stack(s) => (*s).borrow().page_count(),
       Memory::KernelStack(s) => (*s).borrow().page_count(),
     }

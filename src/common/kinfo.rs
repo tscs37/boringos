@@ -15,6 +15,7 @@ pub struct KernelInfo {
   current_task_handle_int: Atomic<TaskHandle>,
   current_code_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
   current_data_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
+  current_bss_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
   current_stack_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
   zero_page_addr: OptAPtr,
   page_table: RwLock<Option<Mapper>>,
@@ -27,6 +28,7 @@ impl KernelInfo {
       current_task_handle_int: Atomic::new(TaskHandle::from_c(0)),
       current_code_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
       current_data_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
+      current_bss_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
       current_stack_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
       zero_page_addr: OptAPtr::zero(),
       page_table: RwLock::new(None),
@@ -91,6 +93,12 @@ impl KernelInfo {
     let mur = MemoryUserRef::from(ptr);
     mur.add_page(p);
   }
+  pub fn add_bss_page(&self, p: PhysAddr) {
+    trace!("adding {:?} to active bss memory", p);
+    let ptr = self.current_bss_memory_ref_int.load(Ordering::SeqCst);
+    let mur = MemoryUserRef::from(ptr);
+    mur.add_page(p);
+  }
   pub fn add_stack_page(&self, p: PhysAddr) {
     trace!("adding {:?} to active stack memory", p);
     let ptr = self.current_stack_memory_ref_int.load(Ordering::SeqCst);
@@ -104,6 +112,11 @@ impl KernelInfo {
   }
   pub fn get_data_memory_ref_size(&self) -> usize {
     let ptr = self.current_data_memory_ref_int.load(Ordering::SeqCst);
+    let mur = MemoryUserRef::from(ptr);
+    mur.page_count()
+  }
+  pub fn get_bss_memory_ref_size(&self) -> usize {
+    let ptr = self.current_bss_memory_ref_int.load(Ordering::SeqCst);
     let mur = MemoryUserRef::from(ptr);
     mur.page_count()
   }

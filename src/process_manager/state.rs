@@ -1,5 +1,5 @@
 use core::cell::RefCell;
-use crate::PhysAddr;
+use crate::VirtAddr;
 use crate::process_manager::TaskHandle;
 use crate::process_manager::memory::Memory;
 
@@ -11,10 +11,11 @@ pub struct State {
   active: bool,
   mode: CPUMode,
   //TODO: rename to rip and make atomic
-  start_rip: PhysAddr,
+  start_rip: VirtAddr,
   //TODO: use locked memory handling
   stack: Memory,
   data: Memory,
+  bss: Memory,
   code: Memory,
   //TODO: make atomic
   rsp: usize,
@@ -47,6 +48,7 @@ impl State {
     use goblin::elf::Elf;
     let code_memory = Memory::new_codememory();
     let data_memory = Memory::new_usermemory();
+    let bss_memory = Memory::new_bssmemory(VirtAddr::new(0));
     match Elf::parse(elf_ptr) {
       Ok(binary) => {
         if !binary.is_64
@@ -65,8 +67,10 @@ impl State {
         }
         crate::kinfo_mut().mapping_task_image(Some(true));
         let old_code_memory = crate::kinfo_mut().set_memory_ref(&code_memory);
+        let old_bss_memory = crate::kinfo_mut().set_memory_ref(&bss_memory);
         let old_data_memory = crate::kinfo_mut().set_memory_ref(&data_memory);
         code_memory.map_rw();
+        bss_memory.map();
         data_memory.map();
         for ph in binary.program_headers {
           if ph.p_type == goblin::elf::program_header::PT_LOAD {
@@ -101,7 +105,7 @@ impl State {
                   * crate::vmem::PAGE_SIZE
                   + crate::vmem::DATA_START
                 } else if is_bss_section {
-                  crate::kinfo().get_code_memory_ref_size()
+                  crate::kinfo().get_bss_memory_ref_size()
                   * crate::vmem::PAGE_SIZE
                   + crate::vmem::CODE_START
                 } else {
@@ -180,18 +184,22 @@ impl State {
         }
         code_memory.unmap();
         data_memory.unmap();
+        bss_memory.unmap();
         crate::kinfo_mut().mapping_task_image(Some(false));
         crate::kinfo_mut().set_memory_ref(&old_code_memory);
         crate::kinfo_mut().set_memory_ref(&old_data_memory);
+        crate::kinfo_mut().set_memory_ref(&old_bss_memory);
         drop(old_code_memory);
         drop(old_data_memory);
+        drop(old_bss_memory);
         let s = State {
           active: false,
           mode: CPUMode::Kernel,
-          start_rip: PhysAddr::new(binary.entry),
+          start_rip: VirtAddr::new(binary.entry),
           stack: Memory::new_stack(),
           data: data_memory,
           code: code_memory,
+          bss: bss_memory,
           rsp: crate::vmem::STACK_START,
           rbp: crate::vmem::STACK_START,
           signalrecv: 0,
@@ -208,9 +216,10 @@ impl State {
     State {
       active: false,
       mode: CPUMode::Kernel,
-      start_rip: PhysAddr::try_new(null_fn as u64).expect("null_fn must resolve"),
+      start_rip: VirtAddr::try_new(null_fn as u64).expect("null_fn must resolve"),
       stack: Memory::new_nomemory(),
       data: Memory::new_nomemory(),
+      bss: Memory::new_nomemory(),
       code: Memory::new_nomemory(),
       rsp: crate::vmem::STACK_START,
       rbp: crate::vmem::STACK_START,
