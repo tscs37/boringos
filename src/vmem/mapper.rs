@@ -56,7 +56,7 @@ pub fn map_new(base_addr: VirtAddr, mt: MapType) -> PhysAddr {
   }).expect("map_new failed")
 }
 
-pub fn map_zero(addr: VirtAddr, size: u16) {
+pub fn map_zero(addr: VirtAddr, size: u32) {
   // grab zero_page first, otherwise we get a problem when we grab the lock on the APT
   // below!
   trace!("mapping memory at {:?} ({} pages, {:?})", addr, size, MapType::Zero);

@@ -125,16 +125,28 @@ fn handle_new_umemory(vaddr: VirtAddr, page: Page, is_codepage: bool, is_datapag
   //TODO: check paging mode for paging new task
   //TODO: check if zero page touched
   trace!("checking if the kernel touched memory correctly");
+    let cur_bss_offset = kinfo().get_bss_offset();
+  let is_bsspage = page.start_address() >= VirtAddr::new((crate::vmem::CODE_START + cur_bss_offset).try_into().unwrap())
+      && page.start_address() <= VirtAddr::new((crate::vmem::CODE_END + cur_bss_offset).try_into().unwrap());
+  let is_bsspage = is_codepage && is_bsspage;
   let expected_vaddr: VirtAddr = {
-    let offset: usize = if is_codepage {
+    let offset: usize = if is_codepage && !is_bsspage {
+      trace!("page fault in code memory");
       crate::vmem::CODE_START
     } else if is_datapage {
+      trace!("page fault in data memory");
       crate::vmem::DATA_START
+    } else if is_bsspage {
+      trace!("page fault in  bss memory @ {}", cur_bss_offset);
+      kinfo().get_bss_offset() + crate::vmem::CODE_START
     } else {
       panic!("Neither BSS or Code page in BSS or Code only path of page fault");
     };
     let addr: usize = offset + (PAGE_SIZE
                 * (kinfo().get_code_memory_ref_size())) as usize;
+    let addr = if is_bsspage {
+      addr + cur_bss_offset
+    } else { addr };
     VirtAddr::new(addr.try_into().unwrap())
   };
   if expected_vaddr != vaddr {

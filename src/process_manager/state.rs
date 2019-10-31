@@ -66,12 +66,15 @@ impl State {
           return Err(StateError::ELFExceedPHMax);
         }
         crate::kinfo_mut().mapping_task_image(Some(true));
+        trace!("setting memory reference pointers");
         let old_code_memory = crate::kinfo_mut().set_memory_ref(&code_memory);
         let old_bss_memory = crate::kinfo_mut().set_memory_ref(&bss_memory);
         let old_data_memory = crate::kinfo_mut().set_memory_ref(&data_memory);
+        trace!("mapping memory");
         code_memory.map_rw();
         bss_memory.map();
         data_memory.map();
+        trace!("loading headers");
         for ph in binary.program_headers {
           if ph.p_type == goblin::elf::program_header::PT_LOAD {
             let filer = ph.file_range();
@@ -122,20 +125,12 @@ impl State {
                 trace!("over offset, checking...");
                 let offset = vmr.start - cur_real_base;
                 if is_bss_section {
-                  trace!("bss section, pretouching missing memory");
-                  if offset % 4096 == 0{
-                    let pages = offset / 4096;
-                    trace!("need {} more pages", pages);
-                    for x in 0..pages {
-                      let ptr = cur_real_base + 4096 * x;
-                      trace!("touching {:#018x}", ptr);
-                      let ptr = ptr as *mut u8;
-                      let ptr = ptr as *mut volatile::Volatile<u8>;
-                      assert_eq!(unsafe{ptr.read().read()}, 0, "read empty page equals zero");
-                    }
-                  } else {
+                  trace!("bss section, setting bss offset {:#05x}", offset);
+                  if offset % 4096 != 0 {
                     warn!("non-continonus segment with less than page-sized gap");
                   }
+                  use core::convert::TryInto;
+                  crate::kinfo_mut().set_bss_offset(VirtAddr::new(offset.try_into().unwrap()));
                 } else {
                   panic!("invalid non-continous segment")
                 }
@@ -145,11 +140,11 @@ impl State {
               assert!(size < core::u16::MAX as usize, "size was {}, bigger than {}", size, core::u16::MAX);
               if is_code_section {
                 trace!("setting code memory offset");
-                code_memory.set_zero_page_offset(size as u16);
+                code_memory.set_zero_page_offset(size as u32);
                 trace!("code_memory page_count = {}", code_memory.page_count());
               } else if is_data_section {
                 trace!("setting data memory offset");
-                data_memory.set_zero_page_offset(size as u16);
+                data_memory.set_zero_page_offset(size as u32);
                 trace!("data_memory page_count = {}", data_memory.page_count());
               } else if is_bss_section {
                 trace!("bss section handled offset");

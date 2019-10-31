@@ -125,6 +125,19 @@ impl KernelInfo {
     let mur = MemoryUserRef::from(ptr);
     mur.page_count()
   }
+  pub fn get_bss_offset(&self) -> usize {
+    let ptr = self.current_bss_memory_ref_int.load(Ordering::SeqCst);
+    let mur = MemoryUserRef::from(ptr);
+    let mur = mur.borrow();
+    let offset = mur.offset().try_into().unwrap();
+    offset
+  }
+  pub fn set_bss_offset(&mut self, offset: VirtAddr) {
+    let ptr = self.current_bss_memory_ref_int.load(Ordering::SeqCst);
+    let mur: MemoryUserRef = MemoryUserRef::from(ptr);
+    let mut mur = mur.borrow_mut();
+    mur.set_offset(offset.as_u64().try_into().unwrap())
+  }
   pub fn set_memory_ref(&self, v: &Memory) -> Memory {
     trace!("setting new active memory: {:?}", v);
     match v {
@@ -141,6 +154,11 @@ impl KernelInfo {
       Memory::Stack(s) => Memory::Stack(MemoryUserRef::from(
         self
           .current_stack_memory_ref_int
+          .swap(s.clone().into(), Ordering::SeqCst),
+      )),
+      Memory::BSS(s) => Memory::BSS(MemoryUserRef::from(
+        self
+          .current_bss_memory_ref_int
           .swap(s.clone().into(), Ordering::SeqCst),
       )),
       _ => panic!("tried to assign non-code memory to code memory"),

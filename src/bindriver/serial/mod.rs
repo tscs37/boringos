@@ -30,7 +30,7 @@ impl ::log::Log for SERIAL1 {
             || metadata.target() == "boringos::vmem::mapper"
             || metadata.target() == "boringos::vmem::pagelist::pagelist_ng"
             //|| metadata.target() == "boringos::common::kinfo"
-            || metadata.target() == "boringos::vmem::faulth"
+            //|| metadata.target() == "boringos::vmem::faulth"
             //|| metadata.target() == "boringos::vmem"
             //|| metadata.target() == "boringos::process_manager::state"
             //|| metadata.target() == "boringos::process_manager::memory"
