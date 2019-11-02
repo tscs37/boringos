@@ -20,7 +20,7 @@ log = "0.4.6"
 volatile = "0.2.6"
 
 [dependencies.goblin]
-version = "^0.0"
+version = "0.0.24"
 default_features = false
 features = ["elf64", "elf32", "endian_fd"]
 

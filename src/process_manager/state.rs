@@ -3,6 +3,10 @@ use crate::VirtAddr;
 use crate::process_manager::TaskHandle;
 use crate::process_manager::memory::Memory;
 
+mod gs;
+pub use gs::StateLoader;
+mod elf;
+
 const DEFAULT_PAGE_LIMIT: usize = 1024;
 
 #[derive(Debug, Clone)]
@@ -11,11 +15,10 @@ pub struct State {
   active: bool,
   mode: CPUMode,
   //TODO: rename to rip and make atomic
-  start_rip: VirtAddr,
+  rip: VirtAddr,
   //TODO: use locked memory handling
   stack: Memory,
   data: Memory,
-  bss: Memory,
   code: Memory,
   //TODO: make atomic
   rsp: usize,
@@ -45,176 +48,84 @@ pub enum StateError {
 
 impl State {
   pub fn new_elfstate(elf_ptr: &[u8]) -> Result<State, StateError> {
-    use goblin::elf::Elf;
     let code_memory = Memory::new_codememory();
     let data_memory = Memory::new_usermemory();
-    let bss_memory = Memory::new_bssmemory(VirtAddr::new(0));
-    match Elf::parse(elf_ptr) {
-      Ok(binary) => {
-        if !binary.is_64
-          || binary.is_lib
-          || !binary.little_endian
-          || binary.header.e_machine != 0x3E
-        {
-          return Err(StateError::ELFBadExecutable);
-        }
-        if binary.entry == 0 {
-          return Err(StateError::ELFEntryZero);
-        }
-        trace!("ENTRY: {:#018x}", binary.entry);
-        if binary.program_headers.len() > 32 {
-          return Err(StateError::ELFExceedPHMax);
-        }
-        crate::kinfo_mut().mapping_task_image(Some(true));
-        trace!("setting memory reference pointers");
-        let old_code_memory = crate::kinfo_mut().set_memory_ref(&code_memory);
-        let old_bss_memory = crate::kinfo_mut().set_memory_ref(&bss_memory);
-        let old_data_memory = crate::kinfo_mut().set_memory_ref(&data_memory);
-        trace!("mapping memory");
-        code_memory.map_rw();
-        bss_memory.map();
-        data_memory.map();
-        trace!("loading headers");
-        for ph in binary.program_headers {
-          if ph.p_type == goblin::elf::program_header::PT_LOAD {
-            let filer = ph.file_range();
-            let vmr = ph.vm_range();
-            debug!("loading ELF section: {:#018x}", vmr.start);
-            if ph.is_read() {
-              // this is not according to ELF spec by a lot
-              // but the linker is responsible here
-              // this keeps the kernel simpler and prevents people from
-              // effectively using ELF loading by being very annoying
-              let base = filer.start + (&elf_ptr[0] as *const u8 as usize);
-              trace!("base is {:#018x}, checking inmemory base...", base);
-              trace!("CODE: {:#018x} - {:#018x}", crate::vmem::CODE_START, crate::vmem::CODE_END);
-              trace!("DATA: {:#018x} - {:#018x}", crate::vmem::DATA_START, crate::vmem::DATA_END);
-              let is_code_section = ph.is_executable() && vmr.start >= crate::vmem::CODE_START && vmr.end <= crate::vmem::CODE_END;
-              let is_data_section = ph.is_read() && vmr.start >= crate::vmem::DATA_START && vmr.end <= crate::vmem::DATA_END;
-              let is_bss_section = !ph.is_executable() && vmr.start >= crate::vmem::CODE_START && vmr.end <= crate::vmem::CODE_END;
-              if !is_code_section && !is_data_section && !is_bss_section {
-                panic!("bad section in ELF load: {:#018x}, RWX ({},{},{})", vmr.start, ph.is_read(), ph.is_write(), ph.is_executable());
-              }
-              trace!("PHFlags: R={}, W={}, X={}, {:#018x}, Code={}, Data={}, BSS={}", 
-                ph.is_read(), ph.is_write(), ph.is_executable(), 
-                vmr.start, is_code_section, is_data_section, is_bss_section);
-              let cur_real_base = {
-                if is_code_section {
-                  crate::kinfo().get_code_memory_ref_size()
-                  * crate::vmem::PAGE_SIZE
-                  + crate::vmem::CODE_START
-                } else if is_data_section {
-                  crate::kinfo().get_data_memory_ref_size()
-                  * crate::vmem::PAGE_SIZE
-                  + crate::vmem::DATA_START
-                } else if is_bss_section {
-                  crate::kinfo().get_bss_memory_ref_size()
-                  * crate::vmem::PAGE_SIZE
-                  + crate::vmem::CODE_START
-                } else {
-                  panic!("invalid RWX on Program Header")
-                }
-              };
-              let over_offset = vmr.start > cur_real_base + crate::vmem::PAGE_SIZE;
-              trace!("vmr.start = {:#018x}, cur_real_base = {:#018x}, over_offset = {}",
-                vmr.start,
-                cur_real_base + crate::vmem::PAGE_SIZE,
-                over_offset
-              );
-              if over_offset {
-                trace!("over offset, checking...");
-                let offset = vmr.start - cur_real_base;
-                if is_bss_section {
-                  trace!("bss section, setting bss offset {:#05x}", offset);
-                  if offset % 4096 != 0 {
-                    warn!("non-continonus segment with less than page-sized gap");
-                  }
-                  use core::convert::TryInto;
-                  crate::kinfo_mut().set_bss_offset(VirtAddr::new(offset.try_into().unwrap()));
-                } else {
-                  panic!("invalid non-continous segment")
-                }
-              }
-              debug!("vmr.start > cur_real_base, setting zero page offset");
-              let size = (vmr.start - cur_real_base) / crate::vmem::PAGE_SIZE;
-              assert!(size < core::u16::MAX as usize, "size was {}, bigger than {}", size, core::u16::MAX);
-              if is_code_section {
-                trace!("setting code memory offset");
-                code_memory.set_zero_page_offset(size as u32);
-                trace!("code_memory page_count = {}", code_memory.page_count());
-              } else if is_data_section {
-                trace!("setting data memory offset");
-                data_memory.set_zero_page_offset(size as u32);
-                trace!("data_memory page_count = {}", data_memory.page_count());
-              } else if is_bss_section {
-                trace!("bss section handled offset");
-              } else {
-                panic!("offset on non-code memory");
-              }
-              debug!(
-                "PH, {:#018x} : {:#08x} ({:#08x}) -> {:#018x}",
-                base,
-                filer.start,
-                filer.len(),
-                vmr.start
-              );
-              unsafe {
-                core::intrinsics::copy_nonoverlapping(
-                  base as *const u8,
-                  vmr.start as *mut u8,
-                  vmr.len(),
-                )
-              };
-            } else {
-              return Err(StateError::ELFBadPH);
-            }
-            debug!("loaded ELF section: {:#018x}", vmr.start);
-          } else if ph.p_type == goblin::elf::program_header::PT_PHDR {
-            debug!("PHDR, ignoring");
-          } else if ph.p_type == goblin::elf::program_header::PT_GNU_STACK {
-            debug!("GNU_STACK, ignoring");
-          } else {
-            panic!("Unknown ELF section: {:?} ({}), not loading", ph, ph.p_type);
-          }
-        }
-        code_memory.unmap();
-        data_memory.unmap();
-        bss_memory.unmap();
-        crate::kinfo_mut().mapping_task_image(Some(false));
-        crate::kinfo_mut().set_memory_ref(&old_code_memory);
-        crate::kinfo_mut().set_memory_ref(&old_data_memory);
-        crate::kinfo_mut().set_memory_ref(&old_bss_memory);
-        drop(old_code_memory);
-        drop(old_data_memory);
-        drop(old_bss_memory);
-        let s = State {
-          active: false,
-          mode: CPUMode::Kernel,
-          start_rip: VirtAddr::new(binary.entry),
-          stack: Memory::new_stack(),
-          data: data_memory,
-          code: code_memory,
-          bss: bss_memory,
-          rsp: crate::vmem::STACK_START,
-          rbp: crate::vmem::STACK_START,
-          signalrecv: 0,
-          killh: 0,
-          page_limit: DEFAULT_PAGE_LIMIT,
-        };
-        Ok(s)
+    crate::kinfo_mut().mapping_task_image(Some(true));
+    trace!("setting memory reference pointers");
+    let old_code_memory = crate::kinfo_mut().set_memory_ref(&code_memory);
+    let old_data_memory = crate::kinfo_mut().set_memory_ref(&data_memory);
+    trace!("mapping memory");
+    code_memory.map_rw();
+    data_memory.map();
+
+    let loader = elf::ElfLoader::init(elf_ptr)?;
+
+    {
+      use alloc::boxed::Box;
+      debug!("loading code memory");
+      let base = crate::vmem::CODE_START;
+      let data = loader.text();
+      let size = data.len();
+      let data = Box::into_raw(data);
+      unsafe {
+        core::intrinsics::copy_nonoverlapping(
+          data as *mut u8, 
+          base as *mut u8, 
+          size,
+        );
       }
-      Err(e) => Err(StateError::ELFParseError(e)),
+      let data = unsafe{Box::from_raw(data)};
+      drop(data);
     }
+
+    {
+      use alloc::boxed::Box;
+      debug!("loading data memory");
+      let base = crate::vmem::DATA_START;
+      let data = loader.data();
+      let size = data.len();
+      let data = Box::into_raw(data);
+      unsafe {
+        core::intrinsics::copy_nonoverlapping(
+          data as *mut u8, 
+          base as *mut u8, 
+          size,
+        );
+      }
+      let data = unsafe{Box::from_raw(data)};
+      drop(data);
+    }
+
+    code_memory.unmap();
+    data_memory.unmap();
+    crate::kinfo_mut().mapping_task_image(Some(false));
+    crate::kinfo_mut().set_memory_ref(&old_code_memory);
+    crate::kinfo_mut().set_memory_ref(&old_data_memory);
+    drop(old_code_memory);
+    drop(old_data_memory);
+    let s = State {
+      active: false,
+      mode: CPUMode::Kernel,
+      rip: VirtAddr::new(loader.entry()),
+      stack: Memory::new_stack(),
+      data: data_memory,
+      code: code_memory,
+      rsp: crate::vmem::STACK_START,
+      rbp: crate::vmem::STACK_START,
+      signalrecv: 0,
+      killh: 0,
+      page_limit: DEFAULT_PAGE_LIMIT,
+    };
+    Ok(s)
   }
   pub fn new_nullstate() -> State {
     warn!("created nullstate");
     State {
       active: false,
       mode: CPUMode::Kernel,
-      start_rip: VirtAddr::try_new(null_fn as u64).expect("null_fn must resolve"),
+      rip: VirtAddr::try_new(null_fn as u64).expect("null_fn must resolve"),
       stack: Memory::new_nomemory(),
       data: Memory::new_nomemory(),
-      bss: Memory::new_nomemory(),
       code: Memory::new_nomemory(),
       rsp: crate::vmem::STACK_START,
       rbp: crate::vmem::STACK_START,
@@ -255,7 +166,7 @@ impl State {
     self.code.unmap();
   }
   pub fn rip(&self) -> u64 {
-    self.start_rip.as_u64()
+    self.rip.as_u64()
   }
   pub fn rsp(&self) -> u64 {
     self.rsp as u64

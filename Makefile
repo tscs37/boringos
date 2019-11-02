@@ -57,10 +57,10 @@ else
 	@cargo bootimage --$(KERNEL_BUILD_MODE) --target $(KERNEL_TARGET).json
 endif
 
-initramdata/pid0: ln_targets pid0_build
+initramdata/pid0: ln_targets pid0
 	@cp pid0/target/$(BIN_TARGET)/debug/pid0 initramdata/pid0
 
-pid0_build: ln_targets
+pid0: ln_targets
 	@echo "Building PID0 binary"
 	@cd pid0 && cargo xbuild --target $(BIN_TARGET).json
 
