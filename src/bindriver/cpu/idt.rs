@@ -109,6 +109,8 @@ extern "x86-interrupt" fn double_fault(stack_frame: &mut InterruptStackFrame, er
     hlt_cpu!();
 }
 
+use super::PageFaultContext;
+
 extern "x86-interrupt" fn page_fault(
     stack_frame: &mut InterruptStackFrame,
     error_code: u64,
@@ -127,7 +129,8 @@ extern "x86-interrupt" fn page_fault(
 
     assert!(addr >= crate::vmem::KERNEL_START, "valid memory must be above {:#018x}", crate::vmem::KERNEL_START);
     let vaddr = VirtAddr::new(addr.try_into().unwrap());
-    match crate::vmem::faulth::handle(vaddr, error_code) {
+    let pfc = PageFaultContext::new(vaddr, error_code, stack_frame.instruction_pointer);
+    match crate::vmem::faulth::handle(pfc) {
         Ok(res) => debug!("Handler returned Ok: {:?}", res),
         Err(res) => panic!("Handler returned Error: {:?}", res)
     }

@@ -10,6 +10,7 @@
 #![feature(const_fn)]
 #![feature(exclusive_range_pattern)]
 #![feature(try_trait)]
+#![feature(concat_idents)]
 
 #![allow(unused_variables,dead_code)]
 

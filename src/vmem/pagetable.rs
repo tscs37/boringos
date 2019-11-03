@@ -21,17 +21,33 @@ pub type Mapper = OffsetPageTable<'static>;
 pub unsafe fn init<'a>(physical_memory_offset: VirtAddr) {
   trace!("initializing page map in kinfo");
   let level_4_table = active_level4_table(physical_memory_offset);
-  kinfo_mut().set_page_table(
-    OffsetPageTable::new(level_4_table, physical_memory_offset)
-  );
+  kinfo_mut().set_pmo(physical_memory_offset);
 }
 
-pub fn get_pagemap<T, F>(run: F) -> Option<T> where F: for<'a> Fn(&'a Mapper) -> T {
-  kinfo().get_page_table(run)
+use spin::RwLock;
+
+lazy_static!{
+  static ref LOCK: RwLock<()> = RwLock::default();
 }
 
-pub fn get_pagemap_mut<T, F>(run: F) -> Option<T> where F: for<'a> FnMut(&'a mut Mapper) -> T {
-  kinfo().get_page_table_mut(run)
+pub fn get_pagemap<T, F>(run: F) -> T where F: for<'a> Fn(&'a Mapper) -> T {
+  let lock = LOCK.read();
+  let physical_memory_offset = kinfo().get_pmo();
+  let level_4_table = unsafe{active_level4_table(physical_memory_offset)};
+  let opt = unsafe{OffsetPageTable::new(level_4_table, physical_memory_offset)};
+  let ret = run(&opt);
+  drop(lock);
+  ret
+}
+
+pub fn get_pagemap_mut<T, F>(mut run: F) -> T where F: for<'a> FnMut(&'a mut Mapper) -> T {
+  let lock = LOCK.read();
+  let physical_memory_offset = kinfo().get_pmo();
+  let level_4_table = unsafe{active_level4_table(physical_memory_offset)};
+  let mut opt = unsafe{OffsetPageTable::new(level_4_table, physical_memory_offset)};
+  let ret = run(&mut opt);
+  drop(lock);
+  ret
 }
 
 

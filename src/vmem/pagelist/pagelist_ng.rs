@@ -10,10 +10,12 @@ use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::paging::Size4KiB;
 use x86_64::structures::paging::{FrameAllocator, FrameDeallocator};
 
-const PAGES_PER_BLOCK: usize = 4076;
+const PAGES_PER_BLOCK: usize = 4068;
+const HEADER_MAGIC: u64 = 0xDEADC0FFEE;
 
 #[repr(align(4096))]
 pub struct PageMap {
+  header: u64,
   start: PhysAddr,
   size: u16,
   next: Option<PageMapWrapper>,
@@ -30,6 +32,7 @@ impl PageMap {
     assert!(size as usize <= PAGES_PER_BLOCK, "must not specify more than PAGES_PER_BLOCK for on-stack pagemap");
     trace!("allocating pagemap on stack");
     let mut page_map = PageMap {
+      header: HEADER_MAGIC,
       start,
       size,
       next: None,
@@ -40,14 +43,15 @@ impl PageMap {
       page_map.used[x] = AtomicBool::new(false);
     }
     trace!("allocating memory from pagemap on stack");
-    let mut pmw: PageMapWrapper = PageMapWrapper::from(&mut page_map);
+    let mut pmw: PageMapWrapper = PageMapWrapper(NonNull::new(&mut page_map).unwrap());
     let self_alloc: PhysAddr = pmw.allocate()?;
     // todo map allocation in PT
     let self_alloc: VirtAddr = VirtAddr::new(self_alloc.as_u64());
     let self_alloc: *mut PageMap = self_alloc.as_mut_ptr();
     drop(pmw);
-    trace!("lift pagemap into memory {:#018x}", self_alloc as u64);
+    info!("lift pagemap into memory {:#018x}", self_alloc as u64);
     unsafe{core::ptr::write(self_alloc, page_map)};
+    unsafe{self_alloc.as_ref()}.map(|y| y.lock());
     Ok(self_alloc)
   }
   // creates a new pagemap at the indicates position
@@ -56,6 +60,8 @@ impl PageMap {
   // If PAGES_PER_BLOCK was exhausted, the remaining pages are returned.
   fn new(page_map: *mut PageMap, start: PhysAddr, size: u64) -> (*mut PageMap, u64) {
     assert_eq!(PAGES_PER_BLOCK & 0xFFFF, PAGES_PER_BLOCK, "PAGES_PER_BLOCK must fit in u16");
+    assert!(page_range!(KHEAP).contains(&VirtAddr::from_ptr(page_map)), "PageMap allocation outside kernel heap");
+    info!("new page map @ {:?}", VirtAddr::from_ptr(page_map));
     trace!("calculating pagemap size");
     let actual_size: u16 = if size < PAGES_PER_BLOCK.try_into().unwrap() { size.try_into().unwrap() } 
       else { PAGES_PER_BLOCK.try_into().unwrap() };
@@ -63,6 +69,7 @@ impl PageMap {
     trace!("size = {}, actual_size = {}, rem_size = {}", size, actual_size, rem_size);
     trace!("writing to pagemap");
     let pm = PageMap {
+      header: HEADER_MAGIC,
       start,
       size: actual_size,
       free_pages: AtomicU16::new(actual_size),
@@ -74,12 +81,34 @@ impl PageMap {
     for x in 0..PAGES_PER_BLOCK {
       unsafe { (*page_map).used[x] = AtomicBool::new(false) };
     }
+    unsafe{page_map.as_ref()}.map(|y| y.lock());
     (page_map, size - (actual_size as u64))
+  }
+
+  fn verify(&self) {
+    assert_eq!(self.header, HEADER_MAGIC, "Header magic corrupted");
+  }
+
+  fn unlock(&self) {
+    let vaddr = VirtAddr::from_ptr(self as *const PageMap);
+    crate::vmem::mapper::update_flags(vaddr, crate::vmem::mapper::MapType::Data);
+  }
+
+  fn lock(&self) {
+    let vaddr = VirtAddr::from_ptr(self as *const PageMap);
+    crate::vmem::mapper::update_flags(vaddr, crate::vmem::mapper::MapType::ReadOnly);
   }
 }
 
 #[derive(Copy, Clone)]
 pub struct PageMapWrapper(NonNull<PageMap>);
+
+impl PageMapWrapper {
+  fn verify(&self) {
+    let pm: &PageMap = self;
+    pm.verify();
+  }
+}
 
 impl core::ops::Deref for PageMapWrapper {
   type Target = PageMap;
@@ -103,6 +132,7 @@ impl core::fmt::Debug for PageMapWrapper {
 
 impl From<&mut PageMap> for PageMapWrapper {
   fn from(pm: &mut PageMap) -> PageMapWrapper {
+    assert!(page_range!(KHEAP).contains(&VirtAddr::from_ptr(pm as *const PageMap)), "PageMap allocation outside kernel heap");
     PageMapWrapper(NonNull::from(pm))
   }
 }
@@ -122,7 +152,6 @@ impl core::fmt::Display for PageMapWrapper {
 }
 
 impl PagePool for PageMapWrapper {
-
   fn has_free(&self) -> bool {
     self.free_pages.load(Ordering::Relaxed) > 0 || match self.next {
       Some(next) => next.has_free(),
@@ -153,15 +182,24 @@ impl PagePool for PageMapWrapper {
   }
 
   fn allocate(&mut self) -> Result<PhysAddr, PagePoolAllocationError> {
+    self.verify();
+    self.unlock();
     for x in 0..self.size {
       let x = x as usize;
       let prev = self.used[x].compare_and_swap(false, true, Ordering::SeqCst);
       if !prev {
+        trace!("free page from base {:#018x}", 
+          self.start.as_u64());
+        trace!("returning {:#018x} + {:#010x}", 
+          self.start.as_u64() as usize + (x*PAGE_SIZE),
+          (x*PAGE_SIZE));
         let addr = self.start + (x * PAGE_SIZE);
         self.free_pages.fetch_sub(1, Ordering::SeqCst);
+        self.lock();
         return Ok(addr);
       }
     }
+    self.lock();
     trace!("no page found, trying next block");
     match self.next {
       Some(mut next) => next.allocate(),
@@ -170,6 +208,7 @@ impl PagePool for PageMapWrapper {
   }
 
   fn release(&mut self, pa: PhysAddr) -> Result<(),PagePoolReleaseError> {
+    self.verify();
     trace!("releasing memory {:?}", pa);
     if pa > (self.start + self.size as usize) {
       return Err(PagePoolReleaseError::PageUntracked)
@@ -193,19 +232,13 @@ impl PagePool for PageMapWrapper {
       Some(mut next) => next.add_memory(alloc, pa, sz),
       None => {
         trace!("adding {:?}+{} to page pool", pa, sz);
-        use core::alloc::Layout;
-
-        // Allocate the pagemap in memory
-        let layout = Layout::new::<PageMap>();
-        assert!(layout.align() == PAGE_SIZE, "pages must be aligned to pagesize");
-        let ptr = alloc;
 
         // Create the new pagemap from memory
-        let (pm, rem) = PageMap::new(ptr, pa, sz.into());
+        let (pm, rem) = PageMap::new(alloc, pa, sz.into());
         trace!("rem: {}", rem);
 
         // Wrap the resulting pagemap
-        let pm = PageMapWrapper(NonNull::new(ptr)?);
+        let pm = PageMapWrapper(NonNull::new(alloc)?);
         trace!("PMW : {}", pm);
 
         // Update linked list

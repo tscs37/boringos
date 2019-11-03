@@ -6,8 +6,6 @@ use crate::PhysAddr;
 use atomic::Atomic;
 use crate::common::*;
 use core::ptr::NonNull;
-use crate::vmem::pagetable::Mapper;
-use spin::RwLock;
 
 pub struct KernelInfo {
   switching_tasks_int: AtomicBool,
@@ -17,7 +15,7 @@ pub struct KernelInfo {
   current_data_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
   current_stack_memory_ref_int: AtomicPtr<Rc<RefCell<MemoryUser>>>,
   zero_page_addr: OptAPtr,
-  page_table: RwLock<Option<Mapper>>,
+  physical_memory_offset: Atomic<VirtAddr>,
 }
 impl KernelInfo {
   const fn new() -> Self {
@@ -29,20 +27,14 @@ impl KernelInfo {
       current_data_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
       current_stack_memory_ref_int: AtomicPtr::new(0 as *mut Rc<RefCell<MemoryUser>>),
       zero_page_addr: OptAPtr::zero(),
-      page_table: RwLock::new(None),
+      physical_memory_offset: Atomic::new(VirtAddr::zero()),
     }
   }
-  pub fn set_page_table(&mut self, pt: Mapper) {
-    let mut data = self.page_table.write();
-    *data = Some(pt);
+  pub fn get_pmo(&self) -> VirtAddr {
+    self.physical_memory_offset.load(Ordering::SeqCst)
   }
-  pub fn get_page_table<T, F>(&self, run: F) -> Option<T> where F: for<'a> Fn(&'a Mapper) -> T {
-    let pt = self.page_table.read();
-    pt.as_ref().map(|pt| run(pt))
-  }
-  pub fn get_page_table_mut<T, F>(&self, mut run: F) -> Option<T> where F: for<'a> FnMut(&'a mut Mapper) -> T {
-    let mut pt = self.page_table.write();
-    pt.as_mut().map(|pt| run(pt))
+  pub fn set_pmo(&mut self, pmo: VirtAddr) -> VirtAddr {
+    self.physical_memory_offset.swap(pmo, Ordering::SeqCst)
   }
   pub fn mapping_task_image(&mut self, v: Option<bool>) -> bool {
     if v.is_none() {
@@ -89,7 +81,9 @@ impl KernelInfo {
     trace!("adding {:?} to active data memory", p);
     let ptr = self.current_data_memory_ref_int.load(Ordering::SeqCst);
     let mur = MemoryUserRef::from(ptr);
+    trace!("current data memory size: {}", self.get_data_memory_ref_size());
     mur.add_page(p);
+    trace!("new data memory size: {}", self.get_data_memory_ref_size());
   }
   pub fn add_stack_page(&self, p: PhysAddr) {
     trace!("adding {:?} to active stack memory", p);

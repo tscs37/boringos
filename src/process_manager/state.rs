@@ -4,7 +4,7 @@ use crate::process_manager::TaskHandle;
 use crate::process_manager::memory::Memory;
 
 mod gs;
-pub use gs::StateLoader;
+pub use gs::{StateLoader, Section};
 mod elf;
 
 const DEFAULT_PAGE_LIMIT: usize = 1024;
@@ -61,39 +61,17 @@ impl State {
     let loader = elf::ElfLoader::init(elf_ptr)?;
 
     {
-      use alloc::boxed::Box;
+      use core::convert::TryInto;
       debug!("loading code memory");
-      let base = crate::vmem::CODE_START;
       let data = loader.text();
-      let size = data.len();
-      let data = Box::into_raw(data);
-      unsafe {
-        core::intrinsics::copy_nonoverlapping(
-          data as *mut u8, 
-          base as *mut u8, 
-          size,
-        );
-      }
-      let data = unsafe{Box::from_raw(data)};
-      drop(data);
+      data.load_at(crate::vmem::CODE_START.try_into().unwrap());
     }
 
     {
-      use alloc::boxed::Box;
+      use core::convert::TryInto;
       debug!("loading data memory");
-      let base = crate::vmem::DATA_START;
       let data = loader.data();
-      let size = data.len();
-      let data = Box::into_raw(data);
-      unsafe {
-        core::intrinsics::copy_nonoverlapping(
-          data as *mut u8, 
-          base as *mut u8, 
-          size,
-        );
-      }
-      let data = unsafe{Box::from_raw(data)};
-      drop(data);
+      data.load_at(crate::vmem::DATA_START.try_into().unwrap());
     }
 
     code_memory.unmap();

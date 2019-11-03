@@ -47,13 +47,14 @@ pub fn map_new(base_addr: VirtAddr, mt: MapType) -> PhysAddr {
   let frame = unsafe{ pm.alloc_page().expect("map new failed") };
   let page: Page<Size4KiB> = Page::containing_address(base_addr);
   let pagepool = &mut pm.pagepool_raw_mut().clone();
+  trace!("putting new page into pagetable");
   get_pagemap_mut(|apt| {
     let res = unsafe { apt.map_to(page, PhysFrame::containing_address(frame), 
       flags, pagepool) };
     let res = res.unwrap();
     res.flush();
     frame
-  }).expect("map_new failed")
+  })
 }
 
 pub fn map_zero(addr: VirtAddr, size: u32) {
@@ -76,14 +77,14 @@ pub fn map_zero(addr: VirtAddr, size: u32) {
         pagepool,
       )} .unwrap().flush()
     }
-  }).expect("map zero failed")
+  })
 }
 
 pub fn is_mapped(addr: VirtAddr) -> bool {
   trace!("checking if {:?} is mapped", addr);
   get_pagemap(|apt| {
     apt.translate_addr(addr).is_some()
-  }).expect("is_mapped failed")
+  })
 }
 
 pub fn map(base_addr: VirtAddr, pl: Vec<PhysAddr>, mt: MapType) {
@@ -103,7 +104,7 @@ pub fn map(base_addr: VirtAddr, pl: Vec<PhysAddr>, mt: MapType) {
       unsafe { apt.map_to(page, PhysFrame::containing_address(pl[x]), flags, pagepool) }
         .expect("must not fail map").flush();
     }
-  }).expect("map failed")
+  })
 }
 
 pub fn unmap(base_addr: VirtAddr, pl_size: usize, mt: MapType) {
@@ -119,5 +120,13 @@ pub fn unmap(base_addr: VirtAddr, pl_size: usize, mt: MapType) {
       let page: Page<Size4KiB> = Page::containing_address(addr);
       apt.unmap(page).expect("unmap failed").1.flush();
     }
-  }).expect("unmap failed")
+  })
+}
+
+pub fn update_flags(addr: VirtAddr, mt: MapType) {
+  trace!("updating flags of memory at {:?} to {:?}", addr, mt);
+  get_pagemap_mut(|apt| {
+    let page: Page<Size4KiB> = Page::containing_address(addr);
+    apt.update_flags(page, mt.flags()).expect("update_flags failed").flush()
+  })
 }
