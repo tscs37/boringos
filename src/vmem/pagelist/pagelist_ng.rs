@@ -10,7 +10,7 @@ use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::paging::Size4KiB;
 use x86_64::structures::paging::{FrameAllocator, FrameDeallocator};
 
-const PAGES_PER_BLOCK: usize = 4068;
+const PAGES_PER_BLOCK: usize = 4067;
 const HEADER_MAGIC: u64 = 0xDEADC0FFEE;
 
 #[repr(align(4096))]
@@ -20,6 +20,8 @@ pub struct PageMap {
   size: u16,
   next: Option<PageMapWrapper>,
   free_pages: AtomicU16,
+  /// If set, the pagetable lock function is disabled
+  disable_pt_lock: bool,
   used: [AtomicBool; PAGES_PER_BLOCK],
 }
 
@@ -36,6 +38,7 @@ impl PageMap {
       start,
       size,
       next: None,
+      disable_pt_lock: true,
       free_pages: AtomicU16::new(size),
       used: unsafe{core::mem::MaybeUninit::zeroed().assume_init()},
     };
@@ -51,7 +54,8 @@ impl PageMap {
     drop(pmw);
     info!("lift pagemap into memory {:#018x}", self_alloc as u64);
     unsafe{core::ptr::write(self_alloc, page_map)};
-    unsafe{self_alloc.as_ref()}.map(|y| y.lock());
+    unsafe{self_alloc.as_mut().unwrap().disable_pt_lock = false};
+    unsafe{self_alloc.as_mut().unwrap().lock()};
     Ok(self_alloc)
   }
   // creates a new pagemap at the indicates position
@@ -73,6 +77,7 @@ impl PageMap {
       start,
       size: actual_size,
       free_pages: AtomicU16::new(actual_size),
+      disable_pt_lock: false,
       next: None,
       used: unsafe{core::mem::MaybeUninit::zeroed().assume_init()},
     };
@@ -90,13 +95,17 @@ impl PageMap {
   }
 
   fn unlock(&self) {
-    let vaddr = VirtAddr::from_ptr(self as *const PageMap);
-    crate::vmem::mapper::update_flags(vaddr, crate::vmem::mapper::MapType::Data);
+    if !self.disable_pt_lock {
+      let vaddr = VirtAddr::from_ptr(self as *const PageMap);
+      crate::vmem::mapper::update_flags(vaddr, crate::vmem::mapper::MapType::Data);
+    }
   }
 
   fn lock(&self) {
-    let vaddr = VirtAddr::from_ptr(self as *const PageMap);
-    crate::vmem::mapper::update_flags(vaddr, crate::vmem::mapper::MapType::ReadOnly);
+    if !self.disable_pt_lock {
+      let vaddr = VirtAddr::from_ptr(self as *const PageMap);
+      crate::vmem::mapper::update_flags(vaddr, crate::vmem::mapper::MapType::ReadOnly);
+    }
   }
 }
 
@@ -213,12 +222,15 @@ impl PagePool for PageMapWrapper {
     if pa > (self.start + self.size as usize) {
       return Err(PagePoolReleaseError::PageUntracked)
     }
+    self.unlock();
     let index = (pa.as_u64() - self.start.as_u64()) as usize;
     let prev = self.used[index].compare_and_swap(true, false, Ordering::SeqCst);
     if prev {
       self.free_pages.fetch_add(1, Ordering::SeqCst);
+      self.lock();
       Ok(())
     } else {
+      self.lock();
       match self.next {
         Some(mut next) => next.release(pa),
         None => Err(PagePoolReleaseError::PageAlreadyUnused),
@@ -242,7 +254,9 @@ impl PagePool for PageMapWrapper {
         trace!("PMW : {}", pm);
 
         // Update linked list
+        self.unlock();
         self.next = Some(pm);
+        self.lock();
         if sz-rem > 0 {
           trace!("added {} pages", sz-rem);
           Ok(sz-rem)
