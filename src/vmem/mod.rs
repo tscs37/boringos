@@ -16,6 +16,7 @@ pub const KSTACK_START: usize  = 0xffff_ff80_0000_0000;
 pub const KSTACK_END: usize    = 0xffff_ff70_0000_0000;
 pub const KSTACK_GUARD: usize  = 0xffff_ff70_0000_0000;
 pub const KHEAP_END: usize     = 0xffff_ff69_0000_0000;
+pub const KHEAP_ALLOC: usize   = 0xffff_ff61_1000_0000;
 pub const KHEAP_START: usize   = 0xffff_ff61_0000_0000;
 pub const GUARD_PAGE: usize    = 0xffff_ff60_0000_0000;
 pub const STACK_START: usize   = 0xffff_ff5f_ffff_0000;

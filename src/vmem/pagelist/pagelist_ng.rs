@@ -4,7 +4,7 @@ use core::ptr::NonNull;
 use core::option::NoneError;
 use core::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use core::convert::TryFrom;
-use crate::vmem::PAGE_SIZE;
+use crate::vmem::{PAGE_SIZE, KHEAP_START};
 use crate::*;
 use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::paging::Size4KiB;
@@ -45,18 +45,23 @@ impl PageMap {
     for x in 0..PAGES_PER_BLOCK {
       page_map.used[x] = AtomicBool::new(false);
     }
-    trace!("allocating memory from pagemap on stack");
-    let mut pmw: PageMapWrapper = PageMapWrapper(NonNull::new(&mut page_map).unwrap());
-    let self_alloc: PhysAddr = pmw.allocate()?;
-    // todo map allocation in PT
-    let self_alloc: VirtAddr = VirtAddr::new(self_alloc.as_u64());
-    let self_alloc: *mut PageMap = self_alloc.as_mut_ptr();
-    drop(pmw);
-    info!("lift pagemap into memory {:#018x}", self_alloc as u64);
-    unsafe{core::ptr::write(self_alloc, page_map)};
-    unsafe{self_alloc.as_mut().unwrap().disable_pt_lock = false};
-    unsafe{self_alloc.as_mut().unwrap().lock()};
-    Ok(self_alloc)
+
+    let mut pmw = PageMapWrapper(NonNull::new(&mut page_map as *mut PageMap).unwrap());
+    let page = pmw.allocate()?;
+    drop(PageMapWrapper);
+
+    let alloc = KHEAP_START + 0 * PAGE_SIZE;
+    let alloc = VirtAddr::new(alloc.try_into().unwrap());
+    crate::vmem::mapper::map(alloc, &[page], crate::vmem::mapper::MapType::Data);
+
+    let layout = alloc::alloc::Layout::for_value(&page_map);
+    let alloc: *mut PageMap = alloc.as_mut_ptr();
+    info!("lift pagemap into memory {:#018x}", alloc as u64);
+    unsafe{core::ptr::write_volatile(alloc, page_map)};
+    unsafe{alloc.as_mut().unwrap().disable_pt_lock = false};
+    unsafe{alloc.as_mut().unwrap().lock()};
+
+    Ok(alloc)
   }
   // creates a new pagemap at the indicates position
   // and consumes as many pages as possible until either it's capacity
@@ -81,7 +86,7 @@ impl PageMap {
       next: None,
       used: unsafe{core::mem::MaybeUninit::zeroed().assume_init()},
     };
-    unsafe{core::ptr::write(page_map, pm)};
+    unsafe{core::ptr::write_volatile(page_map, pm)};
     trace!("clearing pagemap used bitmap");
     for x in 0..PAGES_PER_BLOCK {
       unsafe { (*page_map).used[x] = AtomicBool::new(false) };

@@ -270,7 +270,7 @@ impl MemoryUser {
     let adj_base = base + (self.first_page_offset as usize) * crate::vmem::PAGE_SIZE;
     map(
       adj_base,
-      self.pages.clone(),
+      &self.pages,
       t,
     );
   }
@@ -311,7 +311,7 @@ impl MemoryKernel {
       return;
     }
     info!("mapping Kernel Memory to {:?}", base);
-    map(base, self.pages.clone(), t);
+    map(base, &self.pages, t);
   }
   fn unmap(&self, _base: VirtAddr, _t: MapType) {
     panic!("kernel memory cannot be unmapped")

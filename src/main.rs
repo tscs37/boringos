@@ -61,10 +61,10 @@ fn kernel_main(boot_info: &'static bootloader::BootInfo) -> ! {
   {
     debug!("Probing existing memory ...");
     {
-      debug!("Initializing VMEM Slab Allocator...");
+      debug!("Initializing VMEM Allocator...");
       pager().init(VirtAddr::new(boot_info.physical_memory_offset)).expect("init on pager failed");
       {
-        let start = vmem::KHEAP_START;
+        let start = vmem::KHEAP_ALLOC;
         let size = vmem::KHEAP_END - vmem:: KHEAP_START;
         debug!("initializing allocator from {:#018x} with {} pages", start, size / 4096);
         unsafe { ALLOCATOR.init(start, size) };

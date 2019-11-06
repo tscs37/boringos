@@ -1,4 +1,3 @@
-use alloc::vec::Vec;
 use crate::process_manager::TaskHandle;
 use crate::vmem::pagetable::Page;
 use crate::vmem::PhysAddr;
@@ -87,7 +86,7 @@ pub fn is_mapped(addr: VirtAddr) -> bool {
   })
 }
 
-pub fn map(base_addr: VirtAddr, pl: Vec<PhysAddr>, mt: MapType) {
+pub fn map(base_addr: VirtAddr, pl: &[PhysAddr], mt: MapType) {
   trace!("mapping memory at {:?} ({} pages, {:?})", base_addr, pl.len(), mt);
   let pm = &mut pager();
   let pagepool = &mut pm.pagepool_raw_mut().clone();
