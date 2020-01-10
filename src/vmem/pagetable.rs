@@ -40,6 +40,14 @@ pub fn get_pagemap<T, F>(run: F) -> T where F: for<'a> Fn(&'a Mapper) -> T {
   ret
 }
 
+pub fn get_pagetable<F>(run: F) where F: for<'a> Fn(&'a PageTable) {
+  let lock = LOCK.read();
+  let physical_memory_offset = kinfo().get_pmo();
+  let level_4_table = unsafe{active_level4_table(physical_memory_offset)};
+  run(&level_4_table);
+  drop(lock);
+}
+
 pub fn get_pagemap_mut<T, F>(mut run: F) -> T where F: for<'a> FnMut(&'a mut Mapper) -> T {
   let lock = LOCK.read();
   let physical_memory_offset = kinfo().get_pmo();

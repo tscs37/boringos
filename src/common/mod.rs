@@ -9,6 +9,7 @@ mod kinfo;
 mod katomic;
 mod kput;
 mod kheap;
+pub mod init;
 
 pub use katomic::*;
 
@@ -75,8 +76,8 @@ pub fn current_taskhandle() -> Result<TaskHandle, ()> {
   })
 }
 
-pub fn pager<'a>() -> KPutGuard<'a, PageManager> {
-  crate::PAGER.try_write().expect("locking page manager failed")
+pub fn pager() -> &'static PageManager {
+  &crate::PAGER
 }
 
 pub fn alloc_page() -> Result<PhysAddr, PagePoolAllocationError> {

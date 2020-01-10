@@ -6,12 +6,17 @@ use crate::*;
 
 fn crack_locks() {
     unsafe { crate::bindriver::serial::SERIAL1.force_unlock() }
-    #[cfg(feature="vga")]
-    unsafe { crate::bindriver::vga_buffer::WRITER.force_unlock() }
 }
 
 macro_rules! busy_intr_handler {
     ($name:ident) => {
+        extern "x86-interrupt" fn $name(stack_frame: &mut InterruptStackFrame) -> ! {
+            crack_locks();
+            debug!("Interrupt {}:\n{:?}", stringify!($name), stack_frame);
+            hlt_cpu!();
+        }
+    };
+    ($name:ident, ret) => {
         extern "x86-interrupt" fn $name(stack_frame: &mut InterruptStackFrame) {
             crack_locks();
             debug!("Interrupt {}:\n{:?}", stringify!($name), stack_frame);
@@ -22,6 +27,18 @@ macro_rules! busy_intr_handler {
 
 macro_rules! busy_intr_handle_errcode {
     ($name:ident) => {
+        extern "x86-interrupt" fn $name(stack_frame: &mut InterruptStackFrame, err: u64) -> ! {
+            crack_locks();
+            debug!(
+                "Interrupt {} ({:#018x}):\n{:?}",
+                stringify!($name),
+                err,
+                stack_frame
+            );
+            hlt_cpu!();
+        }
+    };
+    ($name:ident, ret) => {
         extern "x86-interrupt" fn $name(stack_frame: &mut InterruptStackFrame, err: u64) {
             crack_locks();
             debug!(
@@ -48,7 +65,7 @@ macro_rules! intr {
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
-        intr!(idt, divide_by_zero);
+        intr!(idt, divide_error);
         intr!(idt, non_maskable_interrupt);
         intr!(idt, breakpoint);
         intr!(idt, overflow);
@@ -84,23 +101,23 @@ pub fn init() {
     IDT.load();
 }
 
-busy_intr_handler!(divide_by_zero);
-busy_intr_handler!(non_maskable_interrupt);
-busy_intr_handler!(overflow);
-busy_intr_handler!(bound_range_exceeded);
-busy_intr_handler!(invalid_opcode);
-busy_intr_handler!(device_not_available);
+busy_intr_handler!(divide_error, ret);
+busy_intr_handler!(non_maskable_interrupt, ret);
+busy_intr_handler!(overflow, ret);
+busy_intr_handler!(bound_range_exceeded, ret);
+busy_intr_handler!(invalid_opcode, ret);
+busy_intr_handler!(device_not_available, ret);
 busy_intr_handler!(machine_check);
-busy_intr_handle_errcode!(invalid_tss);
-busy_intr_handle_errcode!(segment_not_present);
-busy_intr_handle_errcode!(stack_segment_fault);
-busy_intr_handle_errcode!(general_protection_fault);
+busy_intr_handle_errcode!(invalid_tss, ret);
+busy_intr_handle_errcode!(segment_not_present, ret);
+busy_intr_handle_errcode!(stack_segment_fault, ret);
+busy_intr_handle_errcode!(general_protection_fault, ret);
 
 extern "x86-interrupt" fn breakpoint(stack_frame: &mut InterruptStackFrame) {
     debug!("BREAKPOINT\n{:#?}\n", stack_frame);
 }
 
-extern "x86-interrupt" fn double_fault(stack_frame: &mut InterruptStackFrame, error_code: u64) {
+extern "x86-interrupt" fn double_fault(stack_frame: &mut InterruptStackFrame, error_code: u64) -> !{
     crack_locks();
     error!("Double Fault, Kernel Halting...");
     error!("Error: {:x}", error_code);

@@ -9,7 +9,7 @@ publish = false
 bootloader = { version = "^0.8", features = ["map_physical_memory"]}
 spin = "^0.5"
 uart_16550 = "^0.2"
-x86_64 = "^0.7"
+x86_64 = "^0.8"
 linked_list_allocator = "^0.6"
 static_assertions = "^0.3"
 bitflags = "^1.0"
@@ -38,5 +38,17 @@ default = []
 opt-level = 3
 codegen-units = 16
 
-[patch.crates-io]
-x86_64 = { git = "https://github.com/rust-osdev/x86_64.git", branch = "remove-ux" }
+[package.metadata.bootimage]
+run-command = [
+  "qemu-system-x86_64", 
+  "-drive", "if=ide,format=raw,file={}", 
+  "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04", 
+  "--no-reboot", 
+  "-cpu", "EPYC",
+  "-serial", "stdio",
+  "-vga", "cirrus"
+]
+run-args = []
+test-args = ["-display", "none"]
+test-success-exit-code = 33
+test-timeout = 300

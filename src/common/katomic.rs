@@ -26,6 +26,12 @@ unsafe impl<T> Send for OptATPtr<T> {}
 unsafe impl<T> Sync for OptATPtr<T> {}
 
 impl<T> OptATPtr<T> {
+  pub fn new(ptr: NNTPtr<T>) -> OptATPtr<T> {
+    Self{
+      _type: PhantomData{},
+      data: AtomicU64::new(ptr.as_ptr() as u64),
+    }
+  }
   ///
   /// Swaps old for new value atomically, returns None if the swap failed
   pub fn cas(&self, old: NNTPtr<T>, new: NNTPtr<T>) -> Option<NNTPtr<T>> {
@@ -50,5 +56,23 @@ impl<T> OptATPtr<T> {
   }
   pub fn is_not_null(&self) -> bool {
     self.get().is_some()
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+  #[test_case]
+  fn check_optatptr_get_set() {
+    let v: i64 = 42;
+    let ptr_raw = &v as *const i64;
+    let ptr = OptATPtr::new(NonNull::from(&v));
+    assert_eq!(ptr_raw, ptr.get().expect("must return pointer").as_ptr(), 
+      "ptr does not equal ptr get");
+    let q: i64 = 32;
+    ptr.set(NonNull::from(&q));
+    assert_eq!(&q as *const i64, ptr.get().expect("must return pointer").as_ptr(), 
+      "ptr set does not equal ptr get");
+    assert!(ptr.is_not_null());
   }
 }

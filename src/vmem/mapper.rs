@@ -7,7 +7,7 @@ use x86_64::structures::paging::PageTableFlags;
 use x86_64::structures::paging::Size4KiB;
 use x86_64::structures::paging::mapper::MapperAllSizes;
 use x86_64::structures::paging::mapper::Mapper;
-use vmem::pagetable::{get_pagemap, get_pagemap_mut};
+use vmem::pagetable::{get_pagemap, get_pagemap_mut, get_pagetable};
 
 #[derive(PartialEq, Debug)]
 pub enum MapType {
@@ -41,11 +41,11 @@ use x86_64::structures::paging::PhysFrame;
 
 pub fn map_new(base_addr: VirtAddr, mt: MapType) -> PhysAddr {
   trace!("mapping new page to {:?} ({:?})", base_addr, mt);
-  let pm = &mut pager();
+  let pm = pager();
   let flags = mt.flags();
   let frame = unsafe{ pm.alloc_page().expect("map new failed") };
   let page: Page<Size4KiB> = Page::containing_address(base_addr);
-  let pagepool = &mut pm.pagepool_raw_mut().clone();
+  let pagepool = &mut pm.pagepool().clone();
   trace!("putting new page into pagetable");
   get_pagemap_mut(|apt| {
     let res = unsafe { apt.map_to(page, PhysFrame::containing_address(frame), 
@@ -56,13 +56,48 @@ pub fn map_new(base_addr: VirtAddr, mt: MapType) -> PhysAddr {
   })
 }
 
+pub fn dump_pagetable() {
+  use x86_64::structures::paging::PageTable;
+  get_pagetable(|apt: &PageTable| {
+    for (idx, pte) in apt.iter().enumerate() {
+      if idx == 1 { continue }
+      if pte.flags().contains(PageTableFlags::PRESENT) {
+        trace!("{}: {:?}", idx, pte);
+        let entry = pte.addr().as_u64() as *mut PageTable;
+        let tablel3: &PageTable = unsafe{&*entry};
+        for (idx, pte) in tablel3.iter().enumerate() {
+          if pte.flags().contains(PageTableFlags::PRESENT) {
+            trace!(" - {}: {:?}", idx, pte);
+            let entry = pte.addr().as_u64() as *mut PageTable;
+            let tablel2: &PageTable = unsafe{&*entry};
+            for (idx, pte) in tablel2.iter().enumerate() {
+              if pte.flags().contains(PageTableFlags::PRESENT) {
+                trace!(" - - {}: {:?}", idx, pte);
+                let entry = pte.addr().as_u64() as *mut PageTable;
+                let tablel1: &PageTable = unsafe{&*entry};
+                for (idx, pte) in tablel1.iter().enumerate() {
+                  if pte.flags().contains(PageTableFlags::PRESENT) {
+                    trace!(" - - - {}: {:?}", idx, pte);
+                    let entry = pte.addr().as_u64() as *mut PageTable;
+                    let tablel1: &PageTable = unsafe{&*entry};
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+}
+
 pub fn map_zero(addr: VirtAddr, size: u32) {
   // grab zero_page first, otherwise we get a problem when we grab the lock on the APT
   // below!
   trace!("mapping memory at {:?} ({} pages, {:?})", addr, size, MapType::Zero);
   let zero_page = kinfo().get_zero_page_addr();
-  let pm = &mut pager();
-  let pagepool = &mut pm.pagepool_raw_mut().clone();
+  let pm = pager();
+  let pagepool = &mut pm.pagepool().clone();
   get_pagemap_mut(|apt| {
     let flags = MapType::Zero.flags();
     let page: Page<Size4KiB> = Page::containing_address(addr);
@@ -88,10 +123,11 @@ pub fn is_mapped(addr: VirtAddr) -> bool {
 
 pub fn map(base_addr: VirtAddr, pl: &[PhysAddr], mt: MapType) {
   trace!("mapping memory at {:?} ({} pages, {:?})", base_addr, pl.len(), mt);
-  let pm = &mut pager();
-  let pagepool = &mut pm.pagepool_raw_mut().clone();
+  let pm = pager();
+  let pagepool = &mut pm.pagepool().clone();
   get_pagemap_mut(|apt| {
     let flags = mt.flags();
+    trace!("effective flags: {:?}", flags);
     for x in 0..pl.len() {
       let addr: VirtAddr = if mt == MapType::Stack {
         base_addr - x * PAGE_SIZE

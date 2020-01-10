@@ -2,6 +2,7 @@ pub mod gdt;
 pub mod idt;
 pub mod pic;
 pub mod rng;
+pub mod qemu;
 use raw_cpuid::{CpuId, FeatureInfo};
 use x86_64::VirtAddr;
 use x86_64::structures::idt::PageFaultErrorCode;

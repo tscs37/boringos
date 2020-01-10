@@ -45,7 +45,7 @@ pub fn handle(pfc: PageFaultContext) -> PFHResult {
   if !pfc.caused_by_protection_violation() {
       if pfc.is_kstack() {
           if pfc.caused_by_instruction_fetch() {
-              panic!("kernel attempted to run instruction from stack");
+              panic!("kernel attempted to run instruction from stack: {:?}", pfc);
           }
           debug!("mapping kstack page to {:?}", pfc.page().start_address());
           map_new(vaddr, MapType::Stack);
@@ -54,10 +54,10 @@ pub fn handle(pfc: PageFaultContext) -> PFHResult {
           return PFHOkResult::Mapped.into()
       } else if pfc.is_kheap() {
         if pfc.caused_by_instruction_fetch() {
-          panic!("kernel attempted to run code from heap");
+          panic!("kernel attempted to run code from heap: {:?}", pfc);
         }
         if vmem::mapper::is_mapped(vaddr) {
-          panic!("fault on already mapped address");
+          panic!("fault on already mapped address: {:?}", pfc);
         }
         debug!("mapping kheap page to {:?}", pfc.page().start_address());
         map_new(vaddr, MapType::Data);
@@ -103,7 +103,7 @@ pub fn handle(pfc: PageFaultContext) -> PFHResult {
         pfc.error_code(),
         pfc.error_code()
       );
-      panic!("todo: kill task is possible");
+      panic!("todo: kill task is possible: {:?}", pfc);
   }
 }
 

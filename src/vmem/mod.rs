@@ -5,6 +5,7 @@ pub mod faulth;
 
 use core::convert::TryInto;
 use core::option::NoneError;
+use atomic::Atomic;
 use crate::common::PhysAddr;
 use crate::*;
 
@@ -53,7 +54,7 @@ use self::pagelist::{PagePoolReleaseError, PagePoolAllocationError, PagePoolAppe
 #[repr(C)]
 #[repr(align(4096))]
 pub struct PageManager {
-  pagepool: Option<PageMapWrapper>,
+  pagepool: Atomic<Option<PageMapWrapper>>,
 }
 
 // Memory allocated for bootstrapping
@@ -66,7 +67,6 @@ pub enum InitError {
   AllocError(PagePoolAllocationError),
   Infallible(core::convert::Infallible),
 }
-
 
 impl From<PagePoolAllocationError> for InitError {
   fn from(p: PagePoolAllocationError) -> InitError { InitError::AllocError(p) }
@@ -85,14 +85,26 @@ impl From<()> for InitError {
 }
 
 impl PageManager {
-  pub const fn new() -> PageManager { PageManager { pagepool: None, } }
+  pub const fn new() -> PageManager { PageManager { pagepool: Atomic::new(None), } }
 
-  pub fn init(&mut self, physical_memory_offset: VirtAddr) -> Result<(), InitError> {
+  pub unsafe fn init(&self, physical_memory_offset: VirtAddr) -> Result<(), InitError> {
+    self.internal_init(physical_memory_offset)
+  }
+
+  pub unsafe fn overwrite_pagepool(&self, pm: PageMapWrapper) {
+    self.pagepool.store(Some(pm), atomic::Ordering::SeqCst);
+  }
+
+  pub unsafe fn erase_pagepool(&self) {
+    self.pagepool.store(None, atomic::Ordering::SeqCst);
+  }
+
+  fn internal_init(&self, physical_memory_offset: VirtAddr) -> Result<(), InitError> {
     trace!("allocating pagepool");
     {
-      self.pagepool = Some(PageMap::new_no_alloc(
+      self.pagepool.store(Some(PageMap::new_no_alloc(
         self.get_boot_base(), BOOT_MEMORY_PAGES as u16
-      )?.try_into()?);
+      )?.try_into()?), atomic::Ordering::SeqCst);
     }
     trace!("pagepool allocated");
 
@@ -106,14 +118,16 @@ impl PageManager {
         let page = Page::containing_address(VirtAddr::new(KHEAP_START.try_into().unwrap()));
         debug!("working on page {:#018x}", page.start_address().as_u64());
         let frame = PhysFrame::<Size4KiB>::containing_address(
-          self.pagepool_mut().allocate().expect("require page for initial heap")
+          self.pagepool().allocate().expect("require page for initial heap")
         );
         debug!("got page frame: {:#018x}", frame.start_address().as_u64());
         let flags = vmem::mapper::MapType::Data.flags();
         debug!("mapping with flags {:?}", flags);
         pagetable::get_pagemap_mut(|mapper| {
           use x86_64::structures::paging::mapper::Mapper;
-          mapper.map_to(page, frame, flags, &mut self.pagepool.unwrap()).expect("failed to map").flush();
+          mapper.map_to(page, frame, flags, &mut self.pagepool
+            .load(atomic::Ordering::Relaxed)
+            .unwrap()).expect("failed to map").flush();
         });
       }
     }
@@ -123,14 +137,8 @@ impl PageManager {
     Ok(())
   }
 
-  fn pagepool(&self) -> &dyn PagePool {
-    self.pagepool.as_ref().unwrap()
-  }
-  pub fn pagepool_mut(&mut self) -> &mut dyn PagePool {
-    self.pagepool.as_mut().unwrap()
-  }
-  pub fn pagepool_raw_mut(&mut self) -> &mut PageMapWrapper {
-    self.pagepool.as_mut().unwrap()
+  pub fn pagepool(&self) -> PageMapWrapper {
+    self.pagepool.load(atomic::Ordering::Relaxed).expect("pagepool not installed but expected")
   }
 
   fn get_boot_base(&self) -> PhysAddr {
@@ -181,8 +189,8 @@ impl PageManager {
 
   // Add memory to the pagepool, requires a PageMap-sized allocation to be passed
   // Returns number of pages added to the pool, loop until this number is 0
-  pub unsafe fn add_memory(&mut self, alloc: *mut PageMap, start: PhysAddr, num_pages: u64) -> Result<u64, PagePoolAppendError> {
-    Ok(self.pagepool_mut().add_memory(alloc, start, num_pages)?)
+  pub unsafe fn add_memory(&self, alloc: *mut PageMap, start: PhysAddr, num_pages: u64) -> Result<u64, PagePoolAppendError> {
+    Ok(self.pagepool().add_memory(alloc, start, num_pages)?)
   }
   pub fn free_memory(&self) -> usize {
     self.pagepool().count_free()
@@ -193,11 +201,11 @@ impl PageManager {
   pub fn used_memory(&self) -> usize {
     self.pagepool().count_used()
   } 
-  pub unsafe fn alloc_page(&mut self) -> Result<PhysAddr, PagePoolAllocationError> {
-    self.pagepool_mut().allocate()
+  pub unsafe fn alloc_page(&self) -> Result<PhysAddr, PagePoolAllocationError> {
+    self.pagepool().allocate()
   }
-  pub unsafe fn free_page(&mut self, pa: PhysAddr) -> Result<(), PagePoolReleaseError> {
-    self.pagepool_mut().release(pa)
+  pub unsafe fn free_page(&self, pa: PhysAddr) -> Result<(), PagePoolReleaseError> {
+    self.pagepool().release(pa)
   }
 }
 

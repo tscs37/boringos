@@ -50,14 +50,28 @@ impl PageMap {
     let page = pmw.allocate()?;
     drop(PageMapWrapper);
 
+    trace!("installing temporary pagepool");
+    unsafe{pager().overwrite_pagepool(pmw)};
+
+    trace!("mapping page pool heap address");
     let alloc = KHEAP_START + 0 * PAGE_SIZE;
     let alloc = VirtAddr::new(alloc.try_into().unwrap());
     crate::vmem::mapper::map(alloc, &[page], crate::vmem::mapper::MapType::Data);
+
+    trace!("uninstall temporary pagepool");
+    unsafe{pager().erase_pagepool()};
+
+    assert!(crate::vmem::mapper::is_mapped(alloc), "didn't map memory address");
+
+    //trace!("PT dump");
+    //crate::vmem::mapper::dump_pagetable();
 
     let layout = alloc::alloc::Layout::for_value(&page_map);
     let alloc: *mut PageMap = alloc.as_mut_ptr();
     info!("lift pagemap into memory {:#018x}", alloc as u64);
     unsafe{core::ptr::write_volatile(alloc, page_map)};
+
+    trace!("locking pagemap");
     unsafe{alloc.as_mut().unwrap().disable_pt_lock = false};
     unsafe{alloc.as_mut().unwrap().lock()};
 
@@ -202,12 +216,10 @@ impl PagePool for PageMapWrapper {
       let x = x as usize;
       let prev = self.used[x].compare_and_swap(false, true, Ordering::SeqCst);
       if !prev {
-        trace!("free page from base {:#018x}", 
-          self.start.as_u64());
-        trace!("returning {:#018x} + {:#010x}", 
-          self.start.as_u64() as usize + (x*PAGE_SIZE),
-          (x*PAGE_SIZE));
         let addr = self.start + (x * PAGE_SIZE);
+        trace!("free page from {:#018x} + {:#010x} = {:#018x}", 
+          self.start.as_u64(),
+          (x*PAGE_SIZE), addr);
         self.free_pages.fetch_sub(1, Ordering::SeqCst);
         self.lock();
         return Ok(addr);
