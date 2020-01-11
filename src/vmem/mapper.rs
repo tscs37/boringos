@@ -48,7 +48,7 @@ pub fn map_new(base_addr: VirtAddr, mt: MapType) -> PhysAddr {
   let pagepool = &mut pm.pagepool().clone();
   trace!("putting new page into pagetable");
   get_pagemap_mut(|apt| {
-    let res = unsafe { apt.map_to(page, PhysFrame::containing_address(frame), 
+    let res = unsafe { apt.map_to(page, UnusedPhysFrame::new(PhysFrame::containing_address(frame)), 
       flags, pagepool) };
     let res = res.unwrap();
     res.flush();
@@ -106,7 +106,7 @@ pub fn map_zero(addr: VirtAddr, size: u32) {
       trace!("map zero: {:?}", addr);
       unsafe { apt.map_to(
         page,
-        PhysFrame::containing_address(zero_page),
+        UnusedPhysFrame::new(PhysFrame::containing_address(zero_page)),
         flags,
         pagepool,
       )} .unwrap().flush()
@@ -136,7 +136,7 @@ pub fn map(base_addr: VirtAddr, pl: &[PhysAddr], mt: MapType) {
       };
       trace!("map: {:?}", addr);
       let page: Page<Size4KiB> = Page::containing_address(addr);
-      unsafe { apt.map_to(page, PhysFrame::containing_address(pl[x]), flags, pagepool) }
+      unsafe { apt.map_to(page, UnusedPhysFrame::new(PhysFrame::containing_address(pl[x])), flags, pagepool) }
         .expect("must not fail map").flush();
     }
   })

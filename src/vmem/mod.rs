@@ -6,7 +6,7 @@ pub mod faulth;
 use core::convert::TryInto;
 use core::option::NoneError;
 use atomic::Atomic;
-use crate::common::PhysAddr;
+use crate::common::{PhysAddr, PhysFrame};
 use crate::*;
 
 pub const PAGE_SIZE: usize = 4096;
@@ -108,28 +108,25 @@ impl PageManager {
     }
     trace!("pagepool allocated");
 
-    unsafe {
-      use x86_64::structures::paging::{PhysFrame, Page, Size4KiB};
-      let start = KHEAP_START;
-      let size = KHEAP_END - KHEAP_START;
+    use x86_64::structures::paging::Page;
+    let start = KHEAP_START;
+    let size = KHEAP_END - KHEAP_START;
       
-      debug!("mapping first heap page");
-      {
-        let page = Page::containing_address(VirtAddr::new(KHEAP_START.try_into().unwrap()));
-        debug!("working on page {:#018x}", page.start_address().as_u64());
-        let frame = PhysFrame::<Size4KiB>::containing_address(
-          self.pagepool().allocate().expect("require page for initial heap")
-        );
+    debug!("mapping first heap page");
+    {
+      let page = Page::containing_address(VirtAddr::new(KHEAP_START.try_into().unwrap()));
+      let frame = self.pagepool().allocate().expect("require page for initial heap").frame();
+      debug!("working on page {:#018x}", page.start_address().as_u64());
+      let flags = vmem::mapper::MapType::Data.flags();
+      debug!("mapping with flags {:?}", flags);
+      pagetable::get_pagemap_mut(|mapper| {
         debug!("got page frame: {:#018x}", frame.start_address().as_u64());
-        let flags = vmem::mapper::MapType::Data.flags();
-        debug!("mapping with flags {:?}", flags);
-        pagetable::get_pagemap_mut(|mapper| {
-          use x86_64::structures::paging::mapper::Mapper;
-          mapper.map_to(page, frame, flags, &mut self.pagepool
-            .load(atomic::Ordering::Relaxed)
-            .unwrap()).expect("failed to map").flush();
-        });
-      }
+        use x86_64::structures::paging::mapper::Mapper;
+        let frame = unsafe{UnusedPhysFrame::new(frame)};
+        mapper.map_to(page, frame, flags, &mut self.pagepool
+          .load(atomic::Ordering::Relaxed)
+          .unwrap()).expect("failed to map").flush();
+      });
     }
     trace!("init pagetable");
     unsafe{crate::vmem::pagetable::init(physical_memory_offset)};
@@ -202,10 +199,10 @@ impl PageManager {
     self.pagepool().count_used()
   } 
   pub unsafe fn alloc_page(&self) -> Result<PhysAddr, PagePoolAllocationError> {
-    self.pagepool().allocate()
+    self.pagepool().allocate().map(|x| x.start_address())
   }
   pub unsafe fn free_page(&self, pa: PhysAddr) -> Result<(), PagePoolReleaseError> {
-    self.pagepool().release(pa)
+    self.pagepool().release(PhysFrame::containing_address(pa))
   }
 }
 

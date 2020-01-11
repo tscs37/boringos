@@ -5,6 +5,7 @@ pub use crate::vmem::pagelist::pagelist_ng::*;
 
 use core::alloc::AllocErr;
 use x86_64::PhysAddr;
+use x86_64::structures::paging::{PhysFrame, UnusedPhysFrame};
 use core::option::NoneError;
 
 pub type RelativeFrame = usize;
@@ -72,10 +73,10 @@ pub trait PagePool {
   /// This function will allocate a memory page from it's internal pool if possible.
   /// If there is no memory available in the pool, None is returned. 
   /// The returned memory page must be zeroed.
-  fn allocate(&mut self) -> Result<PhysAddr, PagePoolAllocationError>;
+  fn allocate(&mut self) -> Result<UnusedPhysFrame, PagePoolAllocationError>;
   /// Releases a memory page to be reused. If the page is pinned, a non-fatal error
   /// must be returned.
-  fn release(&mut self, pa: PhysAddr) -> Result<(), PagePoolReleaseError>;
+  fn release(&mut self, pa: PhysFrame) -> Result<(), PagePoolReleaseError>;
 
   /// A section of memory specified by pa and sz is to be added to the page pool.
   /// The page pool must use the normal memory allocator for this operation.
@@ -85,22 +86,21 @@ pub trait PagePool {
   fn add_memory(&mut self, alloc: *mut PageMap, pa: PhysAddr, sz: u64) -> Result<u64, PagePoolAppendError>;
 }
 
-use x86_64::structures::paging::{PhysFrame, FrameAllocator, FrameDeallocator};
-use x86_64::structures::paging::PageSize;
+use x86_64::structures::paging::{FrameAllocator, FrameDeallocator, Size4KiB};
 
-unsafe impl<T> FrameAllocator<T> for dyn PagePool where T: PageSize {
-  fn allocate_frame(&mut self) -> Option<PhysFrame<T>> {
+unsafe impl FrameAllocator<Size4KiB> for dyn PagePool {
+  fn allocate_frame(&mut self) -> Option<UnusedPhysFrame> {
     debug!("frame allocation request");
     let alloc = self.allocate();
     match alloc {
       Err(v) => { debug!("could not allocate frame: {:?}", v); None },
-      Ok(alloc) => { debug!("allocated frame {:#018x}", alloc); Some(PhysFrame::containing_address(alloc)) }
+      Ok(alloc) => { debug!("allocated frame {:#018x}", alloc.start_address()); Some(alloc) }
     }
   }
 }
 
-impl<T> FrameDeallocator<T> for dyn PagePool where T: PageSize {
-  fn deallocate_frame(&mut self, frame: PhysFrame<T>) {
-    self.release(frame.start_address()).unwrap()
+impl FrameDeallocator<Size4KiB> for dyn PagePool  {
+  fn deallocate_frame(&mut self, frame: UnusedPhysFrame) {
+    self.release(*frame).unwrap()
   }
 }

@@ -17,7 +17,7 @@ pub use kheap::*;
 
 pub use crate::common::kinfo::*;
 
-pub use x86_64::{PhysAddr, VirtAddr};
+pub use x86_64::{PhysAddr, VirtAddr, structures::paging::{PhysFrame, UnusedPhysFrame}};
 
 pub use core::convert::TryInto;
 

@@ -9,6 +9,7 @@ use crate::*;
 use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::paging::Size4KiB;
 use x86_64::structures::paging::{FrameAllocator, FrameDeallocator};
+use x86_64::structures::paging::UnusedPhysFrame;
 
 const PAGES_PER_BLOCK: usize = 4067;
 const HEADER_MAGIC: u64 = 0xDEADC0FFEE;
@@ -56,7 +57,7 @@ impl PageMap {
     trace!("mapping page pool heap address");
     let alloc = KHEAP_START + 0 * PAGE_SIZE;
     let alloc = VirtAddr::new(alloc.try_into().unwrap());
-    crate::vmem::mapper::map(alloc, &[page], crate::vmem::mapper::MapType::Data);
+    crate::vmem::mapper::map(alloc, &[page.start_address()], crate::vmem::mapper::MapType::Data);
 
     trace!("uninstall temporary pagepool");
     unsafe{pager().erase_pagepool()};
@@ -209,7 +210,7 @@ impl PagePool for PageMapWrapper {
     debug!("Next PagePool: {:?}", self.next);
   }
 
-  fn allocate(&mut self) -> Result<PhysAddr, PagePoolAllocationError> {
+  fn allocate(&mut self) -> Result<UnusedPhysFrame, PagePoolAllocationError> {
     self.verify();
     self.unlock();
     for x in 0..self.size {
@@ -222,6 +223,8 @@ impl PagePool for PageMapWrapper {
           (x*PAGE_SIZE), addr);
         self.free_pages.fetch_sub(1, Ordering::SeqCst);
         self.lock();
+        let addr = unsafe{UnusedPhysFrame::new(PhysFrame::
+          from_start_address(addr).expect("allocated unaligned physical address"))};
         return Ok(addr);
       }
     }
@@ -233,14 +236,15 @@ impl PagePool for PageMapWrapper {
     }
   }
 
-  fn release(&mut self, pa: PhysAddr) -> Result<(),PagePoolReleaseError> {
+  fn release(&mut self, pa: PhysFrame) -> Result<(),PagePoolReleaseError> {
     self.verify();
     trace!("releasing memory {:?}", pa);
-    if pa > (self.start + self.size as usize) {
+    if pa.start_address() > (self.start + self.size as usize) {
       return Err(PagePoolReleaseError::PageUntracked)
     }
     self.unlock();
-    let index = (pa.as_u64() - self.start.as_u64()) as usize;
+    let index = (pa.start_address().as_u64() - self.start.as_u64()) as usize;
+    let index = index / pa.size() as usize;
     let prev = self.used[index].compare_and_swap(true, false, Ordering::SeqCst);
     if prev {
       self.free_pages.fetch_add(1, Ordering::SeqCst);
@@ -287,18 +291,18 @@ impl PagePool for PageMapWrapper {
 
 
 unsafe impl FrameAllocator<Size4KiB> for PageMapWrapper  {
-  fn allocate_frame(&mut self) -> Option<PhysFrame> {
+  fn allocate_frame(&mut self) -> Option<UnusedPhysFrame> {
     trace!("allocating frame from pagemapper");
-    let pframe = PhysFrame::containing_address(self.allocate().unwrap());
+    let pframe = self.allocate().unwrap();
     trace!("free frames remaining: {}", self.count_free());
     Some(pframe)
   }
 }
 
 impl FrameDeallocator<Size4KiB> for PageMapWrapper {
-  fn deallocate_frame(&mut self, frame: PhysFrame) {
+  fn deallocate_frame(&mut self, frame: UnusedPhysFrame) {
     trace!("deallocating frame from pagemapper");
-    self.release(frame.start_address()).unwrap()
+    self.release(*frame).unwrap()
   }
 }
 
