@@ -13,6 +13,7 @@ use vmem::pagetable::{get_pagemap, get_pagemap_mut, get_pagetable};
 pub enum MapType {
   Stack,               // Stack Page, No Execute
   Data,                // Data Page, No Execute
+  UnsafeCode,          // Code Page, Writable
   Code,                // Code Page, No Write
   ReadOnly,            // Data Page, No Write
   Managed(TaskHandle), // Memory available via other process
@@ -26,6 +27,7 @@ impl MapType {
     let flags = match self {
       MapType::Stack => PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE,
       MapType::Data => PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE,
+      MapType::UnsafeCode => PageTableFlags::WRITABLE,
       MapType::Code => PageTableFlags::empty(),
       MapType::ReadOnly => PageTableFlags::NO_EXECUTE,
       MapType::Managed(_) => PageTableFlags::NO_EXECUTE,

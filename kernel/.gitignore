@@ -1,0 +1,5 @@
+/bos_emulator
+/target/
+**/*.rs.bk
+/initramfs.bin
+/x86_64-boringos*

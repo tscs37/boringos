@@ -57,10 +57,10 @@ impl PageMap {
     trace!("mapping page pool heap address");
     let alloc = KHEAP_START + 0 * PAGE_SIZE;
     let alloc = VirtAddr::new(alloc.try_into().unwrap());
-    crate::vmem::mapper::map(alloc, &[page.start_address()], crate::vmem::mapper::MapType::Data);
+    crate::vmem::mapper::map(alloc, &[page.start_address()], crate::vmem::mapper::MapType::UnsafeCode);
 
-    trace!("uninstall temporary pagepool");
-    unsafe{pager().erase_pagepool()};
+    //trace!("uninstall temporary pagepool");
+    //unsafe{pager().erase_pagepool()};
 
     assert!(crate::vmem::mapper::is_mapped(alloc), "didn't map memory address");
 
@@ -236,7 +236,7 @@ impl PagePool for PageMapWrapper {
     }
   }
 
-  fn release(&mut self, pa: PhysFrame) -> Result<(),PagePoolReleaseError> {
+  fn release(&mut self, pa: PhysFrame<Size4KiB>) -> Result<(),PagePoolReleaseError> {
     self.verify();
     trace!("releasing memory {:?}", pa);
     if pa.start_address() > (self.start + self.size as usize) {
@@ -245,6 +245,7 @@ impl PagePool for PageMapWrapper {
     self.unlock();
     let index = (pa.start_address().as_u64() - self.start.as_u64()) as usize;
     let index = index / pa.size() as usize;
+    trace!("index rel to pagelist is {}", index);
     let prev = self.used[index].compare_and_swap(true, false, Ordering::SeqCst);
     if prev {
       self.free_pages.fetch_add(1, Ordering::SeqCst);

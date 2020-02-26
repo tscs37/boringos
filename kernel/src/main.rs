@@ -41,8 +41,6 @@ use core::cell::RefCell;
 pub use crate::common::*;
 
 pub static PAGER: PageManager = PageManager::new();
-#[global_allocator]
-static ALLOCATOR: LockedHeap = LockedHeap::empty();
 static mut USERSPACE: Option<Arc<RefCell<Userspace>>> = None;
 
 bootloader::entry_point!(kernel_main);

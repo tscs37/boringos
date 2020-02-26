@@ -1,54 +1,11 @@
-[package]
-name = "boringos"
-version = "0.1.1"
-authors = ["Tim Schuster <mail@timschuster.info>"]
-edition = "2018"
-publish = false
+[workspace]
 
-[dependencies]
-bootloader = { version = "^0.8", features = ["map_physical_memory"]}
-spin = "^0.5"
-uart_16550 = "^0.2"
-x86_64 = "^0.8"
-linked_list_allocator = "^0.6"
-static_assertions = "^0.3"
-bitflags = "^1.0"
-raw-cpuid = "6.0.0"
-pic8259_simple = "0.1.1"
-atomic = {version = "^0.4", features = ["nightly"]}
-log = "0.4.6"
-volatile = "0.2.6"
-
-[dependencies.goblin]
-version = "0.0.24"
-default_features = false
-features = ["elf64", "elf32", "endian_fd"]
-
-[dependencies.lazy_static]
-version = "1.4"
-features = ["spin_no_std"]
-
-[dependencies.symrfp]
-path = "./symrfp"
-
-[features]
-default = []
+members = [
+  "kernel",
+  "symrfp",
+  "pid0",
+  "bos_emulator",
+]
 
 [profile.dev]
-opt-level = 3
 codegen-units = 16
-
-[package.metadata.bootimage]
-run-command = [
-  "qemu-system-x86_64", 
-  "-drive", "if=ide,format=raw,file={}", 
-  "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04", 
-  "--no-reboot", 
-  "-cpu", "EPYC",
-  "-serial", "stdio",
-  "-vga", "cirrus"
-]
-run-args = []
-test-args = ["-display", "none"]
-test-success-exit-code = 33
-test-timeout = 300

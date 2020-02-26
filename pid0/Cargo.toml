@@ -10,6 +10,3 @@ linked_list_allocator = "0.6.4"
 
 [dependencies.symrfp]
 path = "../symrfp"
-
-[patch.crates-io]
-x86_64 = { git = "https://github.com/rust-osdev/x86_64.git", branch = "remove-ux" }

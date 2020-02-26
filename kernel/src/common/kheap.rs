@@ -5,6 +5,11 @@ use alloc::alloc::{Alloc, GlobalAlloc, AllocErr, Layout};
 use core::ops::Deref;
 use core::ptr::NonNull;
 
+use linked_list_allocator::LockedHeap;
+
+#[global_allocator]
+pub static ALLOCATOR: LockedHeap = LockedHeap::empty();
+/*
 pub struct LockedHeap(Mutex<Heap>);
 
 unsafe impl Alloc for LockedHeap {
@@ -42,4 +47,4 @@ impl LockedHeap {
   pub const fn empty() -> LockedHeap {
     LockedHeap(Mutex::new(Heap::empty()))
   }
-}
+}*/

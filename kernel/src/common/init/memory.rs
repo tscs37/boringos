@@ -1,6 +1,6 @@
 
 use crate::common::*;
-use crate::ALLOCATOR;
+use crate::common::ALLOCATOR;
 use crate::vmem;
 
 fn init_physical_memory_offset(boot_info: &'static bootloader::BootInfo) {
@@ -17,7 +17,7 @@ fn init_allocator() {
   let start = vmem::KHEAP_ALLOC;
   let size = vmem::KHEAP_END - vmem:: KHEAP_START;
   debug!("initializing allocator from {:#018x} with {} pages", start, size / 4096);
-  unsafe { ALLOCATOR.init(start, size) };
+  unsafe { ALLOCATOR.lock().init(start, size) };
   debug!("kernel allocator initialized");
 }
 
