@@ -123,9 +123,9 @@ impl PageManager {
         debug!("got page frame: {:#018x}", frame.start_address().as_u64());
         use x86_64::structures::paging::mapper::Mapper;
         let frame = unsafe{UnusedPhysFrame::new(frame)};
-        mapper.map_to(page, frame, flags, &mut self.pagepool
+        unsafe{mapper.map_to(page, *frame, flags, &mut self.pagepool
           .load(atomic::Ordering::Relaxed)
-          .unwrap()).expect("failed to map").flush();
+          .unwrap()).expect("failed to map").flush()};
       });
     }
     trace!("init pagetable");

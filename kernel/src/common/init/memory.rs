@@ -6,6 +6,7 @@ use crate::vmem;
 fn init_physical_memory_offset(boot_info: &'static bootloader::BootInfo) {
   debug!("creating kernel vmem");
   unsafe{
+    crate::vmem::pagetable::init(VirtAddr::new(boot_info.physical_memory_offset));
     pager()
       .init(VirtAddr::new(boot_info.physical_memory_offset))
       .expect("init on pager failed");
@@ -16,7 +17,13 @@ fn init_physical_memory_offset(boot_info: &'static bootloader::BootInfo) {
 fn init_allocator() {
   let start = vmem::KHEAP_ALLOC;
   let size = vmem::KHEAP_END - vmem:: KHEAP_START;
-  debug!("initializing allocator from {:#018x} with {} pages", start, size / 4096);
+  debug!("initializing allocator from {:#018x} with {} pages, {} MiB", start, size / 4096, size / 4096 / 1024 / 1024);
+  let vaddr = VirtAddr::new(start.try_into().unwrap());
+  vmem::mapper::map_new(vaddr, vmem::mapper::MapType::Data);
+  let flags = vmem::mapper::get_flags(vaddr)
+    .expect("unmapped allocator page start");
+  use x86_64::structures::paging::PageTableFlags;
+  assert!(flags.contains(PageTableFlags::WRITABLE));
   unsafe { ALLOCATOR.lock().init(start, size) };
   debug!("kernel allocator initialized");
 }
@@ -61,14 +68,14 @@ pub fn init_memory(boot_info: &'static bootloader::BootInfo) {
           let range = entry.range;
           let size = (range.end_addr() - range.start_addr()) / 4096;
           use crate::vmem::pagelist::pagelist_ng::PageMap;
-          use alloc::alloc::{Alloc, Global};
+          use alloc::alloc::{Global};
           let layout = PageManager::pagemap_layout();
           let mut rem_pages: u64 = size;
           let mut total_added_pages: u64 = 0;
           while rem_pages > 0 { 
-            let ptr = unsafe{(Global{}).alloc_zeroed(layout)}
-              .expect("could not allocate memory for pagemap");
-            let ptr: *mut PageMap = ptr.cast().as_ptr();
+            use core::alloc::GlobalAlloc;
+            let ptr = unsafe{ALLOCATOR.alloc_zeroed(layout)};
+            let ptr: *mut PageMap = ptr as *mut PageMap;
             let added_pages = unsafe { match pager().add_memory(
               ptr,
               PhysAddr::new(range.start_addr() + (total_added_pages as u64 * 4096)),

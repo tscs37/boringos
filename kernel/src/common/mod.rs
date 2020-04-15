@@ -9,6 +9,7 @@ mod kinfo;
 mod katomic;
 mod kput;
 mod kheap;
+pub mod kabm;
 pub mod init;
 
 pub use katomic::*;

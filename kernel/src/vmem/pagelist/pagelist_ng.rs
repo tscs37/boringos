@@ -55,17 +55,14 @@ impl PageMap {
     unsafe{pager().overwrite_pagepool(pmw)};
 
     trace!("mapping page pool heap address");
-    let alloc = KHEAP_START + 0 * PAGE_SIZE;
+    let alloc = KHEAP_START + 1 * PAGE_SIZE;
     let alloc = VirtAddr::new(alloc.try_into().unwrap());
-    crate::vmem::mapper::map(alloc, &[page.start_address()], crate::vmem::mapper::MapType::UnsafeCode);
-
-    //trace!("uninstall temporary pagepool");
-    //unsafe{pager().erase_pagepool()};
+    crate::vmem::mapper::map(alloc, &[page.start_address()], crate::vmem::mapper::MapType::Data);
 
     assert!(crate::vmem::mapper::is_mapped(alloc), "didn't map memory address");
 
-    //trace!("PT dump");
-    //crate::vmem::mapper::dump_pagetable();
+    page_map.verify();
+    
 
     let layout = alloc::alloc::Layout::for_value(&page_map);
     let alloc: *mut PageMap = alloc.as_mut_ptr();
@@ -292,18 +289,18 @@ impl PagePool for PageMapWrapper {
 
 
 unsafe impl FrameAllocator<Size4KiB> for PageMapWrapper  {
-  fn allocate_frame(&mut self) -> Option<UnusedPhysFrame> {
+  fn allocate_frame(&mut self) -> Option<PhysFrame> {
     trace!("allocating frame from pagemapper");
     let pframe = self.allocate().unwrap();
     trace!("free frames remaining: {}", self.count_free());
-    Some(pframe)
+    Some(*pframe)
   }
 }
 
 impl FrameDeallocator<Size4KiB> for PageMapWrapper {
-  fn deallocate_frame(&mut self, frame: UnusedPhysFrame) {
+  unsafe fn deallocate_frame(&mut self, frame: PhysFrame) {
     trace!("deallocating frame from pagemapper");
-    self.release(*frame).unwrap()
+    self.release(frame).unwrap()
   }
 }
 

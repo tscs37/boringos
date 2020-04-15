@@ -1,5 +1,5 @@
 
-use crate::vmem::{mapper::map_new, mapper::MapType, PAGE_SIZE};
+use crate::vmem::{mapper::map_new, mapper::get_flags, mapper::MapType, PAGE_SIZE};
 use crate::*;
 
 pub type PFHResult = Result<PFHOkResult, PFHErrResult>;
@@ -41,6 +41,15 @@ pub fn handle(pfc: PageFaultContext) -> PFHResult {
     Ok(vaddr) => vaddr,
     Err(_) => { return PFHErrResult::InvalidAddress(pfc.page().start_address()).into() }
   };
+
+  let flags = get_flags(vaddr)
+    .unwrap_or(crate::vmem::mapper::MapType::Zero.flags());
+  /*if flags == crate::vmem::mapper::MapType::ReadOnly.flags() {
+    panic!("attempted to write to readonly memory at {:?}, instruction: {:?}, flags: {:?}", 
+      pfc.fault_address(),
+      pfc.instr_address(), flags);
+  }*/
+  debug!("Active flags: {:?}", flags);
 
   if !pfc.caused_by_protection_violation() {
       if pfc.is_kstack() {

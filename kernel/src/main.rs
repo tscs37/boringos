@@ -1,6 +1,7 @@
 #![feature(abi_x86_interrupt,alloc_error_handler,allocator_api,lang_items,
   const_raw_ptr_to_usize_cast,asm,naked_functions,integer_atomics,panic_info_message,
-  const_fn,exclusive_range_pattern,try_trait,concat_idents,custom_test_frameworks)]
+  const_fn,exclusive_range_pattern,try_trait,concat_idents,custom_test_frameworks, 
+  alloc_layout_extra)]
 
 #![test_runner(crate::test::test_runner)]
 #![reexport_test_harness_main = "test_main"]
@@ -105,7 +106,7 @@ pub fn panic(info: &PanicInfo) -> ! {
     Some(s) => error!("Panicked at {}~{}", s.file(), s.line()),
     None => error!("Panic had no stracktrace"),
   }
-  #[cfg(test)]
+  //#[cfg(test)]
   {
     use crate::bindriver::cpu::qemu::*;
     exit_qemu(QemuExitCode::Failed);
@@ -118,7 +119,7 @@ pub fn panic(info: &PanicInfo) -> ! {
 pub fn alloc_error(layout: core::alloc::Layout) -> ! {
   error!("Allocation Error: {} bytes, CPU halted", layout.size());
 
-  #[cfg(test)]
+  //#[cfg(test)]
   {
     use crate::bindriver::cpu::qemu::*;
     exit_qemu(QemuExitCode::Failed);

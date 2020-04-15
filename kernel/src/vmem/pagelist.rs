@@ -89,18 +89,18 @@ pub trait PagePool {
 use x86_64::structures::paging::{FrameAllocator, FrameDeallocator, Size4KiB};
 
 unsafe impl FrameAllocator<Size4KiB> for dyn PagePool {
-  fn allocate_frame(&mut self) -> Option<UnusedPhysFrame> {
+  fn allocate_frame(&mut self) -> Option<PhysFrame> {
     debug!("frame allocation request");
     let alloc = self.allocate();
     match alloc {
       Err(v) => { debug!("could not allocate frame: {:?}", v); None },
-      Ok(alloc) => { debug!("allocated frame {:#018x}", alloc.start_address()); Some(alloc) }
+      Ok(alloc) => { debug!("allocated frame {:#018x}", alloc.start_address()); Some(*alloc) }
     }
   }
 }
 
 impl FrameDeallocator<Size4KiB> for dyn PagePool  {
-  fn deallocate_frame(&mut self, frame: UnusedPhysFrame) {
-    self.release(*frame).unwrap()
+  unsafe fn deallocate_frame(&mut self, frame: PhysFrame) {
+    self.release(frame).unwrap()
   }
 }
