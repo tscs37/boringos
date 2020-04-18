@@ -115,15 +115,14 @@ impl PageManager {
     debug!("mapping first heap page");
     {
       let page = Page::containing_address(VirtAddr::new(KHEAP_START.try_into().unwrap()));
-      let frame = self.pagepool().allocate().expect("require page for initial heap").frame();
+      let frame = self.pagepool().allocate().expect("require page for initial heap");
       debug!("working on page {:#018x}", page.start_address().as_u64());
       let flags = vmem::mapper::MapType::Data.flags();
       debug!("mapping with flags {:?}", flags);
       pagetable::get_pagemap_mut(|mapper| {
         debug!("got page frame: {:#018x}", frame.start_address().as_u64());
         use x86_64::structures::paging::mapper::Mapper;
-        let frame = unsafe{UnusedPhysFrame::new(frame)};
-        unsafe{mapper.map_to(page, *frame, flags, &mut self.pagepool
+        unsafe{mapper.map_to(page, frame, flags, &mut self.pagepool
           .load(atomic::Ordering::Relaxed)
           .unwrap()).expect("failed to map").flush()};
       });

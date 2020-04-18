@@ -1,0 +1,19 @@
+[package]
+name = "bos_emulator"
+version = "0.1.0"
+authors = ["Tim Schuster <mail@timschuster.info>"]
+edition = "2018"
+build = "build.rs"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+wasmtime-environ = "0.8"
+wasmtime-runtime = "0.8"
+wasmtime-jit = "0.8"
+cranelift-native = "0.50"
+cranelift-codegen = "0.50"
+log = "0.4"
+env_logger = "0.7"
+
+[dependencies.symrfp]
+path = "../symrfp"

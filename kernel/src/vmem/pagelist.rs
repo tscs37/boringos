@@ -5,7 +5,7 @@ pub use crate::vmem::pagelist::pagelist_ng::*;
 
 use core::alloc::AllocErr;
 use x86_64::PhysAddr;
-use x86_64::structures::paging::{PhysFrame, UnusedPhysFrame};
+use x86_64::structures::paging::PhysFrame;
 use core::option::NoneError;
 
 pub type RelativeFrame = usize;
@@ -73,7 +73,7 @@ pub trait PagePool {
   /// This function will allocate a memory page from it's internal pool if possible.
   /// If there is no memory available in the pool, None is returned. 
   /// The returned memory page must be zeroed.
-  fn allocate(&mut self) -> Result<UnusedPhysFrame, PagePoolAllocationError>;
+  fn allocate(&mut self) -> Result<PhysFrame, PagePoolAllocationError>;
   /// Releases a memory page to be reused. If the page is pinned, a non-fatal error
   /// must be returned.
   fn release(&mut self, pa: PhysFrame) -> Result<(), PagePoolReleaseError>;
@@ -94,7 +94,7 @@ unsafe impl FrameAllocator<Size4KiB> for dyn PagePool {
     let alloc = self.allocate();
     match alloc {
       Err(v) => { debug!("could not allocate frame: {:?}", v); None },
-      Ok(alloc) => { debug!("allocated frame {:#018x}", alloc.start_address()); Some(*alloc) }
+      Ok(alloc) => { debug!("allocated frame {:#018x}", alloc.start_address()); Some(alloc) }
     }
   }
 }

@@ -144,7 +144,7 @@ extern "x86-interrupt" fn page_fault(
     debug!("fault addr: {:#018x}", addr);
     debug!("instr addr: {:#018x}", stack_frame.instruction_pointer.as_u64());
 
-    assert!(addr >= crate::vmem::KERNEL_START, "valid memory must be above {:#018x}", crate::vmem::KERNEL_START);
+    assert!(addr >= crate::vmem::KERNEL_START, "valid memory must be above {:#018x}, was at {:#018x}", crate::vmem::KERNEL_START, addr);
     let vaddr = VirtAddr::new(addr.try_into().unwrap());
     let pfc = PageFaultContext::new(vaddr, error_code, stack_frame.instruction_pointer);
     match crate::vmem::faulth::handle(pfc) {

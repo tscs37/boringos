@@ -4,7 +4,7 @@ members = [
   "kernel",
   "symrfp",
   "pid0",
-  "bos_emulator",
+  #"bos_emulator",
 ]
 
 [profile.dev]

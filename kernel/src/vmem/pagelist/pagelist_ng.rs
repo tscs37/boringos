@@ -9,7 +9,6 @@ use crate::*;
 use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::paging::Size4KiB;
 use x86_64::structures::paging::{FrameAllocator, FrameDeallocator};
-use x86_64::structures::paging::UnusedPhysFrame;
 
 const PAGES_PER_BLOCK: usize = 4067;
 const HEADER_MAGIC: u64 = 0xDEADC0FFEE;
@@ -114,14 +113,14 @@ impl PageMap {
   fn unlock(&self) {
     if !self.disable_pt_lock {
       let vaddr = VirtAddr::from_ptr(self as *const PageMap);
-      crate::vmem::mapper::update_flags(vaddr, crate::vmem::mapper::MapType::Data);
+      //crate::vmem::mapper::update_flags(vaddr, crate::vmem::mapper::MapType::Data);
     }
   }
 
   fn lock(&self) {
     if !self.disable_pt_lock {
       let vaddr = VirtAddr::from_ptr(self as *const PageMap);
-      crate::vmem::mapper::update_flags(vaddr, crate::vmem::mapper::MapType::ReadOnly);
+      //crate::vmem::mapper::update_flags(vaddr, crate::vmem::mapper::MapType::ReadOnly);
     }
   }
 }
@@ -207,7 +206,7 @@ impl PagePool for PageMapWrapper {
     debug!("Next PagePool: {:?}", self.next);
   }
 
-  fn allocate(&mut self) -> Result<UnusedPhysFrame, PagePoolAllocationError> {
+  fn allocate(&mut self) -> Result<PhysFrame, PagePoolAllocationError> {
     self.verify();
     self.unlock();
     for x in 0..self.size {
@@ -220,8 +219,8 @@ impl PagePool for PageMapWrapper {
           (x*PAGE_SIZE), addr);
         self.free_pages.fetch_sub(1, Ordering::SeqCst);
         self.lock();
-        let addr = unsafe{UnusedPhysFrame::new(PhysFrame::
-          from_start_address(addr).expect("allocated unaligned physical address"))};
+        let addr = PhysFrame::from_start_address(addr)
+          .expect("allocated unaligned physical address");
         return Ok(addr);
       }
     }
@@ -293,7 +292,7 @@ unsafe impl FrameAllocator<Size4KiB> for PageMapWrapper  {
     trace!("allocating frame from pagemapper");
     let pframe = self.allocate().unwrap();
     trace!("free frames remaining: {}", self.count_free());
-    Some(*pframe)
+    Some(pframe)
   }
 }
 
